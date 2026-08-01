@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "مترجم اجتماعات جوجل للعربية | Google Meet Arabic AI Subtitles",
+  "version": "1.0.0",
+  "description": "إضافة ترجمة فورية وسياقية لاجتماعات Google Meet إلى اللغة العربية باستخدام الذكاء الاصطناعي مع واجهة عائمة أنيقة.",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://translate.googleapis.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*"],
+      "css": ["styles.css"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

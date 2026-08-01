@@ -1,0 +1,5 @@
+# Ignore node modules and temp files
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
