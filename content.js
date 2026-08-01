@@ -9,12 +9,12 @@
   let currentFontSize = 22;
   let showOriginalText = true;
 
-  // Debounce & Sentence Buffer State
-  let sentenceBuffer = "";
+  // Utterance State tracking
+  let currentUtteranceText = "";
   let lastSpeaker = "";
+  let lastTranslatedText = "";
   let debounceTimer = null;
-  let isTranslating = false;
-  const DEBOUNCE_MS = 850; // Wait 850ms pause before translating full sentence
+  const DEBOUNCE_MS = 750; // Wait 750ms for speaker pause before translating
 
   // Initialize UI & Observers on page load
   function init() {
@@ -49,8 +49,8 @@
         <div class="speaker-tag" id="hud-speaker" style="display: none;">
           <span>👤</span> <span id="speaker-name-text">المتحدث</span>
         </div>
-        <div class="original-text" id="hud-original-text">في انتظار بدء المحادثة أو تفعيل الـ Captions...</div>
-        <div class="arabic-translation" id="hud-arabic-text">شريط الترجمة العربية جاهز ويعمل الآن ✨</div>
+        <div class="original-text" id="hud-original-text">في انتظار بدء المحادثة... (تأكد من تفعيل الـ Captions في Google Meet)</div>
+        <div class="arabic-translation" id="hud-arabic-text">شريط الترجمة العربية جاهز ومُنقّط بنجاح ✨</div>
       </div>
     `;
 
@@ -180,7 +180,6 @@
 
   // 5. Google Meet Captions DOM Observer
   function startCaptionObserver() {
-    // Observer looking for caption container insertions
     const observer = new MutationObserver(() => {
       if (!isEnabled) return;
       extractCaptionsFromDOM();
@@ -193,54 +192,80 @@
     });
   }
 
-  // Extract caption text & speaker from Google Meet elements
+  // Extract caption text & speaker cleanly from Google Meet elements
   function extractCaptionsFromDOM() {
-    // Selectors matching Google Meet's live caption containers across various Google Meet versions
-    const captionNodes = document.querySelectorAll(
-      'div[jsname="ds319b"], div[jscontroller="k9t41b"], .a70Wyd, .T6426b, div[data-captions-container] div'
+    // Find speaker blocks in Google Meet
+    const blocks = document.querySelectorAll(
+      'div[jsname="ds319b"], div[jscontroller="k9t41b"], div[data-captions-container] > div'
     );
 
-    let latestSpeaker = "";
-    let fullRawCaption = "";
+    let activeBlock = null;
 
-    // Try finding speaker and text block
-    captionNodes.forEach((node) => {
-      const text = node.innerText || node.textContent;
-      if (!text || text.trim().length === 0) return;
-
-      // Check if this node or a child is a speaker name tag
-      const speakerElem = node.querySelector('.zsT38, .Vbk7vd, [jsname="r4n84e"]') || node.previousElementSibling;
-      if (speakerElem && speakerElem.innerText) {
-        latestSpeaker = speakerElem.innerText.trim();
+    if (blocks.length > 0) {
+      // Pick the LAST block (the currently spoken active utterance)
+      activeBlock = blocks[blocks.length - 1];
+    } else {
+      // Fallback: pick last caption container
+      const captionNodes = document.querySelectorAll('.a70Wyd, .T6426b');
+      if (captionNodes.length > 0) {
+        activeBlock = captionNodes[captionNodes.length - 1].parentElement;
       }
-
-      fullRawCaption += " " + text.trim();
-    });
-
-    // Fallback: search general caption regions if specific classes differ
-    if (!fullRawCaption.trim()) {
-      const generalCaptions = document.querySelectorAll('[aria-label*="captions" i], [aria-label*="تفريغ" i]');
-      generalCaptions.forEach(el => {
-        fullRawCaption += " " + el.innerText.trim();
-      });
     }
 
-    fullRawCaption = cleanText(fullRawCaption);
+    if (!activeBlock) return;
 
-    if (fullRawCaption && fullRawCaption !== sentenceBuffer) {
-      sentenceBuffer = fullRawCaption;
-      if (latestSpeaker) lastSpeaker = latestSpeaker;
+    // Extract speaker name
+    let speakerName = "";
+    const speakerElem = activeBlock.querySelector('[jsname="r4n84e"], .zsT38, .Vbk7vd');
+    if (speakerElem && speakerElem.innerText) {
+      speakerName = speakerElem.innerText.trim();
+    }
 
-      // Update live original display instantly
-      updateHUDOriginalText(sentenceBuffer, lastSpeaker);
+    // Extract text content from text spans inside activeBlock
+    let textElems = activeBlock.querySelectorAll('.a70Wyd, .T6426b, span[jsname]');
+    let rawText = "";
+
+    if (textElems.length > 0) {
+      textElems.forEach(el => {
+        const txt = el.innerText || el.textContent;
+        if (txt && !txt.includes(speakerName)) {
+          rawText += " " + txt.trim();
+        }
+      });
+    } else {
+      rawText = activeBlock.innerText || activeBlock.textContent || "";
+    }
+
+    // Remove speaker name if it got prepended inside rawText
+    if (speakerName && rawText.startsWith(speakerName)) {
+      rawText = rawText.substring(speakerName.length).trim();
+    }
+
+    // Clean UI artifacts & garbage
+    rawText = cleanText(rawText);
+
+    if (!rawText || rawText.length < 2) return;
+
+    // Check if new content arrived
+    if (rawText !== currentUtteranceText || speakerName !== lastSpeaker) {
+      currentUtteranceText = rawText;
+      if (speakerName) lastSpeaker = speakerName;
+
+      // Update live original text instantly
+      updateHUDOriginalText(currentUtteranceText, lastSpeaker);
 
       // Debounce & buffer sentence for complete translation
-      scheduleTranslation(sentenceBuffer, lastSpeaker);
+      scheduleTranslation(currentUtteranceText, lastSpeaker);
     }
   }
 
   function cleanText(str) {
-    return str.replace(/\s+/g, ' ').trim();
+    return str
+      .replace(/closed_caption/gi, '')
+      .replace(/closed caption/gi, '')
+      .replace(/\[\s*closed_caption\s*\]/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   function updateHUDOriginalText(text, speaker) {
@@ -251,7 +276,7 @@
     if (origElem) origElem.textContent = text;
     if (speaker && speaker.trim()) {
       speakerTag.style.display = "inline-flex";
-      speakerText.textContent = speaker;
+      speakerText.textContent = speaker === "You" ? "أنت" : speaker;
     }
   }
 
@@ -259,9 +284,8 @@
   function scheduleTranslation(text, speaker) {
     if (debounceTimer) clearTimeout(debounceTimer);
 
-    // If text ends with punctuation or pause, translate immediately
     const endsWithPunctuation = /[.?!;:\n]$/.test(text);
-    const delay = endsWithPunctuation ? 300 : DEBOUNCE_MS;
+    const delay = endsWithPunctuation ? 250 : DEBOUNCE_MS;
 
     const statusDot = document.getElementById("hud-status-dot");
     if (statusDot) statusDot.classList.add("translating");
@@ -274,6 +298,7 @@
   // Send translation request to background worker
   function executeTranslation(text, speaker) {
     if (!text || text.trim().length === 0) return;
+    if (text === lastTranslatedText) return;
 
     chrome.runtime.sendMessage(
       {
@@ -286,6 +311,7 @@
         if (statusDot) statusDot.classList.remove("translating");
 
         if (response && response.success) {
+          lastTranslatedText = text;
           renderArabicTranslation(response.arabicText);
           addTranscriptItem(text, response.arabicText, speaker);
         }
@@ -293,10 +319,24 @@
     );
   }
 
+  // Format and render Arabic translation with clean line breaks per sentence
   function renderArabicTranslation(arabicText) {
     const arElem = document.getElementById("hud-arabic-text");
-    if (arElem && arabicText) {
-      arElem.textContent = arabicText;
+    if (!arElem || !arabicText) return;
+
+    // Clean any unwanted artifacts
+    let cleanedAr = arabicText
+      .replace(/ closed_caption/gi, '')
+      .replace(/closed_caption/gi, '')
+      .replace(/^أنت\s+/g, '') // remove redundant leading "أنت " if inserted by mistake
+      .trim();
+
+    // Format multiple sentences cleanly into distinct lines/paragraphs
+    const sentences = cleanedAr.split(/(?<=[.؟!])\s+/);
+    if (sentences.length > 1) {
+      arElem.innerHTML = sentences.map(s => `<div class="ar-line">${s.trim()}</div>`).join('');
+    } else {
+      arElem.textContent = cleanedAr;
     }
   }
 
@@ -305,12 +345,14 @@
     const drawerList = document.getElementById("drawer-items-list");
     if (!drawerList) return;
 
+    const displaySpeaker = speaker === "You" ? "أنت" : (speaker || "متحدث");
     const timeStr = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    
     const itemElem = document.createElement("div");
     itemElem.className = "transcript-item";
     itemElem.innerHTML = `
       <div class="transcript-meta">
-        <span>👤 ${speaker || "متحدث"}</span>
+        <span>👤 ${displaySpeaker}</span>
         <span>⏱️ ${timeStr}</span>
       </div>
       <div class="transcript-orig">${origText}</div>
@@ -323,7 +365,7 @@
     // Save to local storage via background worker
     chrome.runtime.sendMessage({
       action: "saveTranscriptItem",
-      item: { speaker: speaker || "متحدث", time: timeStr, orig: origText, ar: arText }
+      item: { speaker: displaySpeaker, time: timeStr, orig: origText, ar: arText }
     });
   }
 

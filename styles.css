@@ -8,14 +8,14 @@
   transform: translateX(-50%);
   z-index: 999999;
   width: 90%;
-  max-width: 850px;
-  background: rgba(15, 23, 42, 0.88);
+  max-width: 820px;
+  background: rgba(15, 23, 42, 0.92);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(99, 102, 241, 0.25);
   border-radius: 16px;
-  padding: 16px 20px;
+  padding: 14px 20px;
   direction: rtl;
   font-family: 'Cairo', system-ui, -apple-system, sans-serif;
   color: #f8fafc;
@@ -108,13 +108,16 @@
   padding: 3px 10px;
   border-radius: 8px;
   margin-bottom: 8px;
+  width: fit-content;
 }
 
 /* Subtitle Content Box */
 .hud-content-box {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 .original-text {
@@ -127,6 +130,10 @@
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  border-left: 2px solid #6366f1;
 }
 
 .arabic-translation {
@@ -134,12 +141,21 @@
   text-align: right;
   font-size: 22px;
   font-weight: 700;
-  line-height: 1.5;
+  line-height: 1.6;
   color: #ffffff;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
   white-space: pre-wrap;
   word-break: break-word;
   animation: fadeInSubtitle 0.3s ease-out;
+}
+
+.ar-line {
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+}
+
+.ar-line:last-child {
+  margin-bottom: 0;
 }
 
 .status-indicator {
