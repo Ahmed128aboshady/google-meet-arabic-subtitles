@@ -3,7 +3,7 @@
 chrome.runtime.onInstalled.addListener(() => {
   console.log("إضافة ترجمة اجتماعات جوجل للعربية مثبتة بنجاح!");
   chrome.storage.sync.get(["engine", "fontSize", "showOriginal"], (data) => {
-    if (!data.engine) chrome.storage.sync.set({ engine: "gemini" });
+    if (!data.engine) chrome.storage.sync.set({ engine: "fast" }); // Default to fast free engine
     if (!data.fontSize) chrome.storage.sync.set({ fontSize: 22 });
     if (data.showOriginal === undefined) chrome.storage.sync.set({ showOriginal: true });
   });
@@ -18,14 +18,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })
       .catch((err) => {
         console.error("خطأ أثناء الترجمة:", err);
-        // Fallback to fast translation if Gemini fails
-        fallbackFastTranslation(request.text)
-          .then((fallbackText) => {
-            sendResponse({ success: true, arabicText: fallbackText, speaker: request.speaker, isFallback: true });
-          })
-          .catch((fallbackErr) => {
-            sendResponse({ success: false, error: fallbackErr.toString() });
-          });
+        sendResponse({ success: false, error: err.toString() });
       });
     return true; // Asynchronous response
   }
@@ -34,7 +27,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.storage.local.get({ transcriptHistory: [] }, (res) => {
       const history = res.transcriptHistory;
       history.push(request.item);
-      // Keep last 300 items
       if (history.length > 300) history.shift();
       chrome.storage.local.set({ transcriptHistory: history });
     });
@@ -48,7 +40,7 @@ async function handleTranslation(text, speaker) {
   const apiKey = storage.apiKey;
   const engine = storage.engine || "gemini";
 
-  // Use Gemini AI if key is provided and engine selected is gemini
+  // If Gemini selected and key present
   if (engine === "gemini" && apiKey && apiKey.trim().length > 5) {
     try {
       return await translateWithGemini(text, apiKey);
@@ -66,7 +58,7 @@ async function handleTranslation(text, speaker) {
 async function translateWithGemini(text, apiKey) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
   
-  const systemInstruction = "أنت مترجم احترافي لاجتماعات ومحادثات سريعة. ترجم النص المعطى إلى لغة عربية بيضاء بسيطة، طبيعية وسلسة، وتجنب الترجمة الحرفية تماماً. اكتب الترجمة فقط بدون مقدمات أو ملاحظات أو علامات تنصيص زائدة.";
+  const systemInstruction = "أنت مترجم احترافي لاجتماعات ومحادثات متعددة اللغات. ترجم النص المعطى (من أي لغة إلى العربية) بأسلوب عربي فصيح وبسيط وسلس بدون ترجمة حرفية. اكتب الترجمة فقط بدون مقدمات أو علامات اقتباس.";
 
   const bodyData = {
     contents: [
@@ -102,23 +94,39 @@ async function translateWithGemini(text, apiKey) {
   throw new Error("لم يتم إرجاع نتيجة من Gemini API");
 }
 
-// Fast Free Fallback Translation (Google Translate Client Endpoint)
+// Fast Free Fallback Translation (Multiple Backup Endpoints)
 async function fallbackFastTranslation(text) {
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ar&dt=t&q=${encodeURIComponent(text)}`;
-  
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Fast Translation Error (${response.status})`);
+  // Endpoint 1: Google Translate GTX
+  try {
+    const url1 = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ar&dt=t&q=${encodeURIComponent(text)}`;
+    const response = await fetch(url1);
+    if (response.ok) {
+      const data = await response.json();
+      let translatedStr = "";
+      if (data && data[0]) {
+        data[0].forEach((item) => {
+          if (item[0]) translatedStr += item[0];
+        });
+      }
+      if (translatedStr.trim()) return translatedStr.trim();
+    }
+  } catch (e) {
+    console.warn("Primary fast translation failed, trying backup:", e);
   }
 
-  const data = await response.json();
-  let translatedStr = "";
-
-  if (data && data[0]) {
-    data[0].forEach((item) => {
-      if (item[0]) translatedStr += item[0];
-    });
+  // Endpoint 2: MyMemory Translation API fallback
+  try {
+    const url2 = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|ar`;
+    const response2 = await fetch(url2);
+    if (response2.ok) {
+      const data2 = await response2.json();
+      if (data2 && data2.responseData && data2.responseData.translatedText) {
+        return data2.responseData.translatedText;
+      }
+    }
+  } catch (e) {
+    console.warn("Secondary fast translation failed:", e);
   }
 
-  return translatedStr.trim() || text;
+  return text; // Return original if all endpoints fail
 }

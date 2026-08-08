@@ -1,7 +1,7 @@
 // Content Script for Google Meet Live Captions & Subtitle HUD
 
 (function () {
-  console.log("تم تشغيل إضافة ترجمة اجتماعات جوجل للعربية على التاب الحالي.");
+  console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
 
   let hudContainer = null;
   let transcriptDrawer = null;
@@ -14,9 +14,8 @@
   let lastSpeaker = "";
   let lastTranslatedText = "";
   let debounceTimer = null;
-  const DEBOUNCE_MS = 750; // Wait 750ms for speaker pause before translating
+  const DEBOUNCE_MS = 650; // Wait 650ms pause before translating
 
-  // Initialize UI & Observers on page load
   function init() {
     createSubtitleHUD();
     createTranscriptDrawer();
@@ -49,7 +48,7 @@
         <div class="speaker-tag" id="hud-speaker" style="display: none;">
           <span>👤</span> <span id="speaker-name-text">المتحدث</span>
         </div>
-        <div class="original-text" id="hud-original-text">في انتظار بدء المحادثة... (تأكد من تفعيل الـ Captions في Google Meet)</div>
+        <div class="original-text" id="hud-original-text">في انتظار بدء المحادثة... (تأكد من تفعيل الـ Captions CC في Google Meet)</div>
         <div class="arabic-translation" id="hud-arabic-text">شريط الترجمة العربية جاهز ومُنقّط بنجاح ✨</div>
       </div>
     `;
@@ -178,8 +177,9 @@
     }
   }
 
-  // 5. Google Meet Captions DOM Observer
+  // 5. Multi-Strategy Google Meet Captions DOM Observer
   function startCaptionObserver() {
+    // Scan DOM continuously with MutationObserver + fallback periodic polling
     const observer = new MutationObserver(() => {
       if (!isEnabled) return;
       extractCaptionsFromDOM();
@@ -190,58 +190,90 @@
       subtree: true,
       characterData: true
     });
+
+    // Interval fallback to catch fast UI updates
+    setInterval(() => {
+      if (isEnabled) extractCaptionsFromDOM();
+    }, 400);
   }
 
-  // Extract caption text & speaker cleanly from Google Meet elements
+  // Multi-Strategy Caption Extractor
   function extractCaptionsFromDOM() {
-    // Find speaker blocks in Google Meet
-    const blocks = document.querySelectorAll(
-      'div[jsname="ds319b"], div[jscontroller="k9t41b"], div[data-captions-container] > div'
+    let rawText = "";
+    let speakerName = "";
+
+    // --- Strategy 1: Specific Google Meet Captions attributes & classes ---
+    const knownBlocks = document.querySelectorAll(
+      'div[jsname="ds319b"], div[jscontroller="k9t41b"], div[data-captions-container] > div, div[jsname="V21rUb"]'
     );
 
-    let activeBlock = null;
+    if (knownBlocks.length > 0) {
+      const activeBlock = knownBlocks[knownBlocks.length - 1];
+      const speakerElem = activeBlock.querySelector('[jsname="r4n84e"], .zsT38, .Vbk7vd');
+      if (speakerElem) speakerName = speakerElem.innerText.trim();
 
-    if (blocks.length > 0) {
-      // Pick the LAST block (the currently spoken active utterance)
-      activeBlock = blocks[blocks.length - 1];
-    } else {
-      // Fallback: pick last caption container
-      const captionNodes = document.querySelectorAll('.a70Wyd, .T6426b');
-      if (captionNodes.length > 0) {
-        activeBlock = captionNodes[captionNodes.length - 1].parentElement;
+      const textElems = activeBlock.querySelectorAll('.a70Wyd, .T6426b, span[jsname]');
+      if (textElems.length > 0) {
+        textElems.forEach(el => {
+          const txt = el.innerText || el.textContent;
+          if (txt && !txt.includes(speakerName)) rawText += " " + txt.trim();
+        });
+      } else {
+        rawText = activeBlock.innerText || activeBlock.textContent || "";
       }
     }
 
-    if (!activeBlock) return;
+    // --- Strategy 2: ARIA Live Regions & Captions Labels (Universal Accessibillity) ---
+    if (!rawText.trim()) {
+      const ariaNodes = document.querySelectorAll(
+        '[aria-live="polite"], [aria-live="assertive"], [aria-label*="caption" i], [aria-label*="tasmeyat" i], [aria-label*="تسميات" i]'
+      );
 
-    // Extract speaker name
-    let speakerName = "";
-    const speakerElem = activeBlock.querySelector('[jsname="r4n84e"], .zsT38, .Vbk7vd');
-    if (speakerElem && speakerElem.innerText) {
-      speakerName = speakerElem.innerText.trim();
-    }
-
-    // Extract text content from text spans inside activeBlock
-    let textElems = activeBlock.querySelectorAll('.a70Wyd, .T6426b, span[jsname]');
-    let rawText = "";
-
-    if (textElems.length > 0) {
-      textElems.forEach(el => {
-        const txt = el.innerText || el.textContent;
-        if (txt && !txt.includes(speakerName)) {
-          rawText += " " + txt.trim();
+      for (let i = ariaNodes.length - 1; i >= 0; i--) {
+        const node = ariaNodes[i];
+        if (node.id && node.id.includes("gmeet-ar")) continue;
+        const text = node.innerText || node.textContent;
+        if (text && text.trim().length > 1) {
+          rawText = text.trim();
+          break;
         }
-      });
-    } else {
-      rawText = activeBlock.innerText || activeBlock.textContent || "";
+      }
     }
 
-    // Remove speaker name if it got prepended inside rawText
+    // --- Strategy 3: Heuristic scan for floating captions panel (Bottom-left Google Meet overlay) ---
+    if (!rawText.trim()) {
+      const allDivs = document.querySelectorAll('div');
+      for (let i = allDivs.length - 1; i >= 0; i--) {
+        const div = allDivs[i];
+        if (div.id && div.id.includes("gmeet-ar")) continue;
+        
+        const txt = (div.innerText || "").trim();
+        if (txt.length >= 2 && txt.length < 450) {
+          const rect = div.getBoundingClientRect();
+          // Check if located in bottom-left or bottom area of screen (where captions appear)
+          if (rect.bottom > window.innerHeight * 0.4 && rect.left < window.innerWidth * 0.7 && rect.height > 15 && rect.height < 320) {
+            // Exclude control bar buttons
+            if (!div.querySelector('button, input, nav')) {
+              // Extract lines
+              const lines = txt.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+              if (lines.length >= 2 && (lines[0] === "You" || lines[0].length < 25)) {
+                speakerName = lines[0];
+                rawText = lines.slice(1).join(' ');
+              } else {
+                rawText = txt;
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Clean speaker name from rawText if prepended
     if (speakerName && rawText.startsWith(speakerName)) {
       rawText = rawText.substring(speakerName.length).trim();
     }
 
-    // Clean UI artifacts & garbage
     rawText = cleanText(rawText);
 
     if (!rawText || rawText.length < 2) return;
@@ -251,10 +283,12 @@
       currentUtteranceText = rawText;
       if (speakerName) lastSpeaker = speakerName;
 
+      console.log("[Meet-Arabic-Subtitles] Captions detected:", { speaker: lastSpeaker, text: currentUtteranceText });
+
       // Update live original text instantly
       updateHUDOriginalText(currentUtteranceText, lastSpeaker);
 
-      // Debounce & buffer sentence for complete translation
+      // Schedule translation
       scheduleTranslation(currentUtteranceText, lastSpeaker);
     }
   }
@@ -285,7 +319,7 @@
     if (debounceTimer) clearTimeout(debounceTimer);
 
     const endsWithPunctuation = /[.?!;:\n]$/.test(text);
-    const delay = endsWithPunctuation ? 250 : DEBOUNCE_MS;
+    const delay = endsWithPunctuation ? 200 : DEBOUNCE_MS;
 
     const statusDot = document.getElementById("hud-status-dot");
     if (statusDot) statusDot.classList.add("translating");
@@ -300,6 +334,8 @@
     if (!text || text.trim().length === 0) return;
     if (text === lastTranslatedText) return;
 
+    console.log("[Meet-Arabic-Subtitles] Requesting translation for:", text);
+
     chrome.runtime.sendMessage(
       {
         action: "translateText",
@@ -311,9 +347,12 @@
         if (statusDot) statusDot.classList.remove("translating");
 
         if (response && response.success) {
+          console.log("[Meet-Arabic-Subtitles] Translation received:", response.arabicText);
           lastTranslatedText = text;
           renderArabicTranslation(response.arabicText);
           addTranscriptItem(text, response.arabicText, speaker);
+        } else {
+          console.error("[Meet-Arabic-Subtitles] Translation failed:", response ? response.error : "No response");
         }
       }
     );
@@ -324,14 +363,12 @@
     const arElem = document.getElementById("hud-arabic-text");
     if (!arElem || !arabicText) return;
 
-    // Clean any unwanted artifacts
     let cleanedAr = arabicText
       .replace(/ closed_caption/gi, '')
       .replace(/closed_caption/gi, '')
-      .replace(/^أنت\s+/g, '') // remove redundant leading "أنت " if inserted by mistake
+      .replace(/^أنت\s+/g, '')
       .trim();
 
-    // Format multiple sentences cleanly into distinct lines/paragraphs
     const sentences = cleanedAr.split(/(?<=[.؟!])\s+/);
     if (sentences.length > 1) {
       arElem.innerHTML = sentences.map(s => `<div class="ar-line">${s.trim()}</div>`).join('');
@@ -362,7 +399,6 @@
     drawerList.appendChild(itemElem);
     drawerList.scrollTop = drawerList.scrollHeight;
 
-    // Save to local storage via background worker
     chrome.runtime.sendMessage({
       action: "saveTranscriptItem",
       item: { speaker: displaySpeaker, time: timeStr, orig: origText, ar: arText }
@@ -404,7 +440,6 @@
     }
   });
 
-  // Run on initial load
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {
