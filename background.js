@@ -1,9 +1,10 @@
-// Service Worker for handling AI & Fast Translation requests
+// Service Worker for handling AI & Fast Translation requests with Target Language Selection
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("إضافة ترجمة اجتماعات جوجل للعربية مثبتة بنجاح!");
-  chrome.storage.sync.get(["engine", "fontSize", "showOriginal"], (data) => {
-    if (!data.engine) chrome.storage.sync.set({ engine: "fast" }); // Default to fast free engine
+  console.log("إضافة ترجمة اجتماعات جوجل مثبتة بنجاح!");
+  chrome.storage.sync.get(["engine", "targetLang", "fontSize", "showOriginal"], (data) => {
+    if (!data.engine) chrome.storage.sync.set({ engine: "fast" });
+    if (!data.targetLang) chrome.storage.sync.set({ targetLang: "ar" });
     if (!data.fontSize) chrome.storage.sync.set({ fontSize: 22 });
     if (data.showOriginal === undefined) chrome.storage.sync.set({ showOriginal: true });
   });
@@ -12,15 +13,15 @@ chrome.runtime.onInstalled.addListener(() => {
 // Listen for messages from content.js
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "translateText") {
-    handleTranslation(request.text, request.speaker)
-      .then((translatedArabic) => {
-        sendResponse({ success: true, arabicText: translatedArabic, speaker: request.speaker });
+    handleTranslation(request.text, request.speaker, request.targetLang)
+      .then((translatedText) => {
+        sendResponse({ success: true, arabicText: translatedText, speaker: request.speaker });
       })
       .catch((err) => {
         console.error("خطأ أثناء الترجمة:", err);
         sendResponse({ success: false, error: err.toString() });
       });
-    return true; // Asynchronous response
+    return true;
   }
 
   if (request.action === "saveTranscriptItem") {
@@ -33,32 +34,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-async function handleTranslation(text, speaker) {
+async function handleTranslation(text, speaker, requestedLang) {
   if (!text || text.trim().length === 0) return "";
 
-  const storage = await chrome.storage.sync.get(["apiKey", "engine"]);
+  const storage = await chrome.storage.sync.get(["apiKey", "engine", "targetLang"]);
   const apiKey = storage.apiKey;
-  const engine = storage.engine || "gemini";
+  const engine = storage.engine || "fast";
+  const targetLang = requestedLang || storage.targetLang || "ar";
 
   // If Gemini selected and key present
   if (engine === "gemini" && apiKey && apiKey.trim().length > 5) {
     try {
-      return await translateWithGemini(text, apiKey);
+      return await translateWithGemini(text, apiKey, targetLang);
     } catch (err) {
       console.warn("فشلت ترجمة Gemini، جاري الانتقال للمحرك السريع الاحتياطي:", err);
-      return await fallbackFastTranslation(text);
+      return await fallbackFastTranslation(text, targetLang);
     }
   }
 
-  // Otherwise use fast Google Translate
-  return await fallbackFastTranslation(text);
+  // Otherwise use fast translation
+  return await fallbackFastTranslation(text, targetLang);
 }
 
-// Gemini AI Contextual Translation
-async function translateWithGemini(text, apiKey) {
+const langNames = {
+  ar: "العربية",
+  en: "English",
+  fr: "French",
+  de: "German",
+  es: "Spanish",
+  tr: "Turkish",
+  it: "Italian",
+  ru: "Russian",
+  zh: "Chinese"
+};
+
+// Gemini AI Contextual Translation with Dynamic Target Language
+async function translateWithGemini(text, apiKey, targetLang) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+  const targetLangName = langNames[targetLang] || "العربية";
   
-  const systemInstruction = "أنت مترجم احترافي لاجتماعات ومحادثات متعددة اللغات. ترجم النص المعطى (من أي لغة إلى العربية) بأسلوب عربي فصيح وبسيط وسلس بدون ترجمة حرفية. اكتب الترجمة فقط بدون مقدمات أو علامات اقتباس.";
+  const systemInstruction = `أنت مترجم احترافي لاجتماعات ومحادثات متعددة اللغات. ترجم النص المعطى (من أي لغة إلى لغة ${targetLangName}) بأسلوب سلس وطبيعي ومفهوم جداً بدون ترجمة حرفية. اكتب الترجمة فقط بدون مقدمات أو علامات اقتباس.`;
 
   const bodyData = {
     contents: [
@@ -94,11 +109,11 @@ async function translateWithGemini(text, apiKey) {
   throw new Error("لم يتم إرجاع نتيجة من Gemini API");
 }
 
-// Fast Free Fallback Translation (Multiple Backup Endpoints)
-async function fallbackFastTranslation(text) {
+// Fast Free Fallback Translation with Dynamic Target Language
+async function fallbackFastTranslation(text, targetLang = "ar") {
   // Endpoint 1: Google Translate GTX
   try {
-    const url1 = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ar&dt=t&q=${encodeURIComponent(text)}`;
+    const url1 = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
     const response = await fetch(url1);
     if (response.ok) {
       const data = await response.json();
@@ -116,7 +131,7 @@ async function fallbackFastTranslation(text) {
 
   // Endpoint 2: MyMemory Translation API fallback
   try {
-    const url2 = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|ar`;
+    const url2 = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${targetLang}`;
     const response2 = await fetch(url2);
     if (response2.ok) {
       const data2 = await response2.json();
@@ -128,5 +143,5 @@ async function fallbackFastTranslation(text) {
     console.warn("Secondary fast translation failed:", e);
   }
 
-  return text; // Return original if all endpoints fail
+  return text;
 }

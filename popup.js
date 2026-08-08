@@ -1,5 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
   const toggleExt = document.getElementById("toggle-extension");
+  const targetLangSelect = document.getElementById("target-lang-select");
   const engineSelect = document.getElementById("engine-select");
   const apiKeyInput = document.getElementById("api-key-input");
   const fontSizeInput = document.getElementById("font-size-input");
@@ -8,9 +9,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const apiKeyGroup = document.getElementById("api-key-group");
 
   // Load existing settings
-  chrome.storage.sync.get(["enabled", "engine", "apiKey", "fontSize"], (res) => {
+  chrome.storage.sync.get(["enabled", "targetLang", "engine", "apiKey", "fontSize"], (res) => {
     toggleExt.checked = res.enabled !== false;
-    engineSelect.value = res.engine || "gemini";
+    targetLangSelect.value = res.targetLang || "ar";
+    engineSelect.value = res.engine || "fast";
     apiKeyInput.value = res.apiKey || "";
     fontSizeInput.value = res.fontSize || 22;
 
@@ -43,6 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
   btnSave.addEventListener("click", () => {
     const settings = {
       enabled: toggleExt.checked,
+      targetLang: targetLangSelect.value,
       engine: engineSelect.value,
       apiKey: apiKeyInput.value.trim(),
       fontSize: parseInt(fontSizeInput.value, 10) || 22
@@ -53,6 +56,13 @@ document.addEventListener("DOMContentLoaded", () => {
       setTimeout(() => {
         toast.style.display = "none";
       }, 2000);
+
+      // Notify content script of target language update
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0] && tabs[0].url.includes("meet.google.com")) {
+          chrome.tabs.sendMessage(tabs[0].id, { action: "updateLanguage", targetLang: settings.targetLang });
+        }
+      });
     });
   });
 });

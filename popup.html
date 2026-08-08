@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <title>مترجم اجتماعات جوجل للعربية</title>
+  <title>مترجم اجتماعات جوجل</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap">
   <style>
     * {
@@ -11,7 +11,7 @@
       padding: 0;
     }
     body {
-      width: 340px;
+      width: 350px;
       font-family: 'Cairo', sans-serif;
       background: #0f172a;
       color: #f8fafc;
@@ -81,7 +81,7 @@
       margin-bottom: 6px;
       color: #cbd5e1;
     }
-    select, input[type="text"] {
+    select, input[type="text"], input[type="number"] {
       width: 100%;
       padding: 9px 12px;
       border-radius: 8px;
@@ -91,6 +91,10 @@
       font-family: 'Cairo', sans-serif;
       font-size: 13px;
       outline: none;
+    }
+    select option {
+      background: #1e293b;
+      color: #fff;
     }
     select:focus, input[type="text"]:focus {
       border-color: #6366f1;
@@ -143,14 +147,29 @@
   </div>
 
   <div class="form-group">
-    <label for="engine-select">محرك الترجمة:</label>
-    <select id="engine-select">
-      <option value="gemini">✨ Gemini AI (ترجمة سياقية ذكية غير حرفية)</option>
-      <option value="fast">⚡ المحرك السريع الاحتياطي (Google Translate)</option>
+    <label for="target-lang-select">لغة الترجمة المستهدفة (Target Language):</label>
+    <select id="target-lang-select">
+      <option value="ar">🇸🇦 العربية (Arabic)</option>
+      <option value="en">🇬🇧 الإنجليزية (English)</option>
+      <option value="fr">🇫🇷 الفرنسية (French)</option>
+      <option value="de">🇩🇪 الألمانية (German)</option>
+      <option value="es">🇪🇸 الإسبانية (Spanish)</option>
+      <option value="tr">🇹🇷 التركية (Turkish)</option>
+      <option value="it">🇮🇹 الإيطالية (Italian)</option>
+      <option value="ru">🇷🇺 الروسية (Russian)</option>
+      <option value="zh">🇨🇳 الصينية (Chinese)</option>
     </select>
   </div>
 
-  <div class="form-group" id="api-key-group">
+  <div class="form-group">
+    <label for="engine-select">محرك الترجمة:</label>
+    <select id="engine-select">
+      <option value="fast">⚡ المحرك السريع التلقائي (Google Translate)</option>
+      <option value="gemini">✨ Gemini AI (ترجمة سياقية ذكية غير حرفية)</option>
+    </select>
+  </div>
+
+  <div class="form-group" id="api-key-group" style="display: none;">
     <label for="api-key-input">مفتاح Gemini API Key:</label>
     <input type="text" id="api-key-input" placeholder="أدخل مفتاح Gemini API هنا...">
     <div class="hint">
