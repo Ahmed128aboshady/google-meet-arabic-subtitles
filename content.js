@@ -1,4 +1,4 @@
-// Content Script for Google Meet Live Subtitle HUD - Lobby & System Text Exclude Filter
+// Content Script for Google Meet Live Subtitle HUD - Strict Official Captions Container Extractor
 
 (function () {
   console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
@@ -201,11 +201,19 @@
     }
   }
 
-  // Strict Filter to exclude Google Meet lobby setup buttons, mic/cam options & system banners
+  // Filter out any system UI phrases
   function isSystemNotification(text) {
     if (!text) return true;
     const lower = text.toLowerCase();
     const systemPhrases = [
+      "use gemini",
+      "take notes",
+      "share notes",
+      "add_to_queue",
+      "allow camera",
+      "do you want people",
+      "switch here",
+      "join here too",
       "present_to_all",
       "meeting_room",
       "use companion mode",
@@ -240,8 +248,7 @@
       "change automatic",
       "closed_caption",
       "closed caption",
-      "строка субтитров",
-      "المحادثة"
+      "строка субтитров"
     ];
     return systemPhrases.some(phrase => lower.includes(phrase));
   }
@@ -264,34 +271,43 @@
     }, 350);
   }
 
-  // Leaf-Node Master Extractor Strategy
+  // Strict Official Captions Container Extractor (Eliminates All UI Tooltip Interference)
   function extractCaptionsFromDOM() {
     let rawText = "";
     let speakerName = "";
 
-    // --- Strategy A: Standard Google Meet selectors ---
-    const knownBlocks = document.querySelectorAll(
+    // Target ONLY Google Meet's official live caption containers
+    const captionBlocks = document.querySelectorAll(
       'div[jsname="ds319b"], div[jscontroller="k9t41b"], div[data-captions-container] > div, div[jsname="V21rUb"]'
     );
 
-    if (knownBlocks.length > 0) {
-      for (let i = knownBlocks.length - 1; i >= 0; i--) {
-        const activeBlock = knownBlocks[i];
-        const speakerElem = activeBlock.querySelector('[jsname="r4n84e"], .zsT38, .Vbk7vd');
+    if (captionBlocks.length > 0) {
+      for (let i = captionBlocks.length - 1; i >= 0; i--) {
+        const block = captionBlocks[i];
+        if (block.closest('#gmeet-ar-subtitle-hud, #gmeet-ar-transcript-drawer')) continue;
+
+        const speakerElem = block.querySelector('[jsname="r4n84e"], .zsT38, .Vbk7vd');
         let tempSpeaker = speakerElem ? speakerElem.innerText.trim() : "";
 
-        const textElems = activeBlock.querySelectorAll('.a70Wyd, .T6426b, span[jsname]');
+        const textElems = block.querySelectorAll('.a70Wyd, .T6426b, span[jsname], div[jsname="V21rUb"]');
         let tempText = "";
+
         if (textElems.length > 0) {
           textElems.forEach(el => {
             const txt = el.innerText || el.textContent;
             if (txt && !txt.includes(tempSpeaker)) tempText += " " + txt.trim();
           });
         } else {
-          tempText = activeBlock.innerText || activeBlock.textContent || "";
+          tempText = block.innerText || block.textContent || "";
         }
 
-        if (tempText && !isSystemNotification(tempText)) {
+        if (tempSpeaker && tempText.startsWith(tempSpeaker)) {
+          tempText = tempText.substring(tempSpeaker.length).trim();
+        }
+
+        tempText = cleanText(tempText);
+
+        if (tempText && tempText.length >= 2 && !isSystemNotification(tempText)) {
           rawText = tempText;
           speakerName = tempSpeaker;
           break;
@@ -299,58 +315,19 @@
       }
     }
 
-    // --- Strategy B: Leaf-Node Bottom Region Scanner ---
+    // Fallback: Check dedicated ARIA captions region ONLY (never query general div/span/p)
     if (!rawText.trim()) {
-      const candidates = [];
-      const elements = document.querySelectorAll('div, span, p');
+      const ariaCaptions = document.querySelectorAll('[aria-label*="caption" i], [aria-label*="subtitles" i], [aria-label*="تفريغ" i]');
+      for (let i = ariaCaptions.length - 1; i >= 0; i--) {
+        const node = ariaCaptions[i];
+        if (node.id && node.id.includes("gmeet-ar")) continue;
 
-      for (let i = elements.length - 1; i >= 0; i--) {
-        const el = elements[i];
-
-        if (el.closest('#gmeet-ar-subtitle-hud, #gmeet-ar-transcript-drawer')) continue;
-        if (el.children.length > 2) continue;
-
-        const txt = (el.innerText || el.textContent || "").trim();
-        if (!txt || txt.length < 2 || txt.length > 350) continue;
-        if (isSystemNotification(txt)) continue;
-
-        const rect = el.getBoundingClientRect();
-        if (rect.height === 0 || rect.width === 0) continue;
-
-        if (rect.top > window.innerHeight * 0.35) {
-          if (!el.closest('button, input, select, nav, [role="button"]')) {
-            candidates.push({ el, txt, rect });
-          }
+        const txt = cleanText(node.innerText || node.textContent || "");
+        if (txt && txt.length >= 2 && !isSystemNotification(txt)) {
+          rawText = txt;
+          break;
         }
       }
-
-      if (candidates.length > 0) {
-        candidates.sort((a, b) => b.rect.bottom - a.rect.bottom);
-
-        const lowestBottom = candidates[0].rect.bottom;
-        const validNodes = [];
-
-        for (const c of candidates) {
-          if (Math.abs(c.rect.bottom - lowestBottom) < 180 && !validNodes.includes(c.txt)) {
-            validNodes.push(c.txt);
-          }
-        }
-
-        if (validNodes.length > 0) {
-          validNodes.reverse();
-          if (validNodes.length >= 2 && validNodes[0].length < 35) {
-            speakerName = validNodes[0];
-            rawText = validNodes.slice(1).join(" ");
-          } else {
-            rawText = validNodes.join(" ");
-          }
-        }
-      }
-    }
-
-    // Clean text
-    if (speakerName && rawText.startsWith(speakerName)) {
-      rawText = rawText.substring(speakerName.length).trim();
     }
 
     rawText = cleanText(rawText);
@@ -406,7 +383,7 @@
     }, delay);
   }
 
-  // Send translation request safely
+  // Send translation request with target language safely to background worker
   function executeTranslation(text, speaker) {
     if (!text || text.trim().length === 0 || isSystemNotification(text)) return;
     if (text === lastTranslatedText) return;
