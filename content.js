@@ -1,4 +1,4 @@
-// Content Script for Google Meet Live Subtitle HUD - Timeout Guard & Sentence Cleaner
+// Content Script for Google Meet Live Subtitle HUD - Reset Button & 2-Line Subtitle Limit
 
 (function () {
   console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
@@ -40,7 +40,7 @@
     startCaptionObserver();
   }
 
-  // 1. Create HUD Overlay Container
+  // 1. Create HUD Overlay Container with Reset Button 🧹
   function createSubtitleHUD() {
     if (document.getElementById("gmeet-ar-subtitle-hud")) return;
 
@@ -55,6 +55,7 @@
           <span class="pause-badge" id="pause-badge">⏸️ متوقف للقراءة</span>
         </div>
         <div class="hud-actions">
+          <button class="hud-btn" id="hud-btn-reset" title="مسح شاشة الترجمة (Reset)">🧹</button>
           <button class="hud-btn" id="hud-btn-history" title="سجل المحادثة">📋</button>
           <button class="hud-btn" id="hud-btn-font-down" title="تصغير الخط">A-</button>
           <button class="hud-btn" id="hud-btn-font-up" title="تكبير الخط">A+</button>
@@ -76,6 +77,23 @@
     makeElementDraggable(hudContainer, document.getElementById("hud-drag-handle"));
     setupHUDButtons();
     setupPauseOnHover();
+  }
+
+  // Reset / Clear HUD Screen Function
+  function resetHUDScreen() {
+    currentUtteranceText = "";
+    lastSpeaker = "";
+    lastTranslatedText = "";
+
+    const origElem = document.getElementById("hud-original-text");
+    const arElem = document.getElementById("hud-arabic-text");
+    const speakerTag = document.getElementById("hud-speaker");
+
+    if (origElem) origElem.textContent = "في انتظار بدء المحادثة...";
+    if (arElem) arElem.innerHTML = `<div class="ar-line">تم مسح الشاشة وبانتظار الكلام الجديد ✨</div>`;
+    if (speakerTag) speakerTag.style.display = "none";
+
+    console.log("[Meet-Arabic-Subtitles] HUD Screen Reset executed.");
   }
 
   // Pause-on-Hover Logic
@@ -131,6 +149,9 @@
 
   // 3. Set up Buttons & Controls
   function setupHUDButtons() {
+    // Reset / Clear Button 🧹
+    document.getElementById("hud-btn-reset").addEventListener("click", resetHUDScreen);
+
     const minimizeBtn = document.getElementById("hud-btn-minimize");
     minimizeBtn.addEventListener("click", () => {
       hudContainer.classList.toggle("minimized");
@@ -415,7 +436,6 @@
     const statusDot = document.getElementById("hud-status-dot");
     if (statusDot) statusDot.classList.add("translating");
 
-    // Safety timeout: remove translating class after 3s max
     setTimeout(() => {
       if (statusDot) statusDot.classList.remove("translating");
     }, 3000);
@@ -425,7 +445,6 @@
     }, delay);
   }
 
-  // Send translation request safely
   function executeTranslation(text, speaker) {
     if (!text || text.trim().length === 0 || isSystemNotification(text)) return;
     if (text === lastTranslatedText) return;
@@ -467,13 +486,12 @@
     }
   }
 
-  // High-Accuracy Numbers & Metrics Highlighting
   function highlightNumbers(text) {
     if (!text) return "";
     return text.replace(/(\$?\b\d+([.,]\d+)?%?|\b[\u0660-\u0669]+\b)/g, '<span class="highlight-num">$1</span>');
   }
 
-  // Subtitle Line Formatting
+  // Render Subtitles: Keep Maximum 2 Active Lines in HUD for Cinema Cleanliness
   function renderArabicTranslation(arabicText) {
     const arElem = document.getElementById("hud-arabic-text");
     if (!arElem || !arabicText) return;
@@ -504,6 +522,11 @@
         finalLines.push(highlightNumbers(sent));
       }
     });
+
+    // Keep max 2 active lines in HUD box for clean reading
+    if (finalLines.length > 2) {
+      finalLines = finalLines.slice(-2);
+    }
 
     if (finalLines.length > 1) {
       arElem.innerHTML = finalLines.map(line => `<div class="ar-line">${line.trim()}</div>`).join('');
