@@ -1,4 +1,4 @@
-// Content Script for Google Meet Live Subtitle HUD with Dynamic Target Language
+// Content Script for Google Meet Live Subtitle HUD with System Notification Filtering
 
 (function () {
   console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
@@ -8,7 +8,7 @@
   let isEnabled = true;
   let currentFontSize = 22;
   let showOriginalText = true;
-  let targetLang = "ar"; // Default target language: Arabic
+  let targetLang = "ar";
 
   const langBadgeNames = {
     ar: "العربية 🇸🇦",
@@ -201,6 +201,28 @@
     }
   }
 
+  // Filter out Google Meet system notifications & UI banners
+  function isSystemNotification(text) {
+    if (!text) return true;
+    const lower = text.toLowerCase();
+    const systemPhrases = [
+      "presentation was added",
+      "main screen",
+      "you are presenting",
+      "stop presenting",
+      "joined the call",
+      "left the call",
+      "waiting for",
+      "waiting to be connected",
+      "avoid an infinity mirror",
+      "share just a tab",
+      "show my screen anyway",
+      "closed_caption",
+      "closed caption"
+    ];
+    return systemPhrases.some(phrase => lower.includes(phrase));
+  }
+
   // 5. Multi-Strategy Google Meet Captions DOM Observer
   function startCaptionObserver() {
     const observer = new MutationObserver(() => {
@@ -219,7 +241,7 @@
     }, 400);
   }
 
-  // Multi-Strategy Caption Extractor
+  // Multi-Strategy Caption Extractor with System Notification Exclusion
   function extractCaptionsFromDOM() {
     let rawText = "";
     let speakerName = "";
@@ -230,22 +252,31 @@
     );
 
     if (knownBlocks.length > 0) {
-      const activeBlock = knownBlocks[knownBlocks.length - 1];
-      const speakerElem = activeBlock.querySelector('[jsname="r4n84e"], .zsT38, .Vbk7vd');
-      if (speakerElem) speakerName = speakerElem.innerText.trim();
+      for (let i = knownBlocks.length - 1; i >= 0; i--) {
+        const activeBlock = knownBlocks[i];
+        const speakerElem = activeBlock.querySelector('[jsname="r4n84e"], .zsT38, .Vbk7vd');
+        let tempSpeaker = speakerElem ? speakerElem.innerText.trim() : "";
 
-      const textElems = activeBlock.querySelectorAll('.a70Wyd, .T6426b, span[jsname]');
-      if (textElems.length > 0) {
-        textElems.forEach(el => {
-          const txt = el.innerText || el.textContent;
-          if (txt && !txt.includes(speakerName)) rawText += " " + txt.trim();
-        });
-      } else {
-        rawText = activeBlock.innerText || activeBlock.textContent || "";
+        const textElems = activeBlock.querySelectorAll('.a70Wyd, .T6426b, span[jsname]');
+        let tempText = "";
+        if (textElems.length > 0) {
+          textElems.forEach(el => {
+            const txt = el.innerText || el.textContent;
+            if (txt && !txt.includes(tempSpeaker)) tempText += " " + txt.trim();
+          });
+        } else {
+          tempText = activeBlock.innerText || activeBlock.textContent || "";
+        }
+
+        if (tempText && !isSystemNotification(tempText)) {
+          rawText = tempText;
+          speakerName = tempSpeaker;
+          break;
+        }
       }
     }
 
-    // --- Strategy 2: ARIA Live Regions & Captions Labels ---
+    // --- Strategy 2: ARIA Live Regions & Captions Labels (excluding System Notifications) ---
     if (!rawText.trim()) {
       const ariaNodes = document.querySelectorAll(
         '[aria-live="polite"], [aria-live="assertive"], [aria-label*="caption" i], [aria-label*="tasmeyat" i], [aria-label*="تسميات" i]'
@@ -255,14 +286,14 @@
         const node = ariaNodes[i];
         if (node.id && node.id.includes("gmeet-ar")) continue;
         const text = node.innerText || node.textContent;
-        if (text && text.trim().length > 1) {
+        if (text && text.trim().length > 1 && !isSystemNotification(text)) {
           rawText = text.trim();
           break;
         }
       }
     }
 
-    // --- Strategy 3: Heuristic scan for floating captions panel ---
+    // --- Strategy 3: Bottom Overlay Captions Panel (e.g. Russian / Multilingual captions) ---
     if (!rawText.trim()) {
       const allDivs = document.querySelectorAll('div');
       for (let i = allDivs.length - 1; i >= 0; i--) {
@@ -270,18 +301,25 @@
         if (div.id && div.id.includes("gmeet-ar")) continue;
         
         const txt = (div.innerText || "").trim();
-        if (txt.length >= 2 && txt.length < 450) {
+        if (txt.length >= 2 && txt.length < 500 && !isSystemNotification(txt)) {
           const rect = div.getBoundingClientRect();
-          if (rect.bottom > window.innerHeight * 0.4 && rect.left < window.innerWidth * 0.7 && rect.height > 15 && rect.height < 320) {
+          if (rect.bottom > window.innerHeight * 0.35 && rect.height > 15 && rect.height < 350) {
             if (!div.querySelector('button, input, nav')) {
-              const lines = txt.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-              if (lines.length >= 2 && (lines[0] === "You" || lines[0].length < 25)) {
-                speakerName = lines[0];
-                rawText = lines.slice(1).join(' ');
-              } else {
-                rawText = txt;
+              const lines = txt.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !isSystemNotification(l));
+              if (lines.length >= 2) {
+                // Check if first line is a speaker name or "Your Presentation"
+                if (lines[0].length < 30) {
+                  speakerName = lines[0];
+                  // Take the translated or spoken paragraph lines
+                  rawText = lines.slice(1).join(' ');
+                } else {
+                  rawText = lines.join(' ');
+                }
+                break;
+              } else if (lines.length === 1) {
+                rawText = lines[0];
+                break;
               }
-              break;
             }
           }
         }
@@ -295,7 +333,7 @@
 
     rawText = cleanText(rawText);
 
-    if (!rawText || rawText.length < 2) return;
+    if (!rawText || rawText.length < 2 || isSystemNotification(rawText)) return;
 
     if (rawText !== currentUtteranceText || speakerName !== lastSpeaker) {
       currentUtteranceText = rawText;
@@ -346,7 +384,7 @@
 
   // Send translation request with target language to background worker
   function executeTranslation(text, speaker) {
-    if (!text || text.trim().length === 0) return;
+    if (!text || text.trim().length === 0 || isSystemNotification(text)) return;
     if (text === lastTranslatedText) return;
 
     console.log(`[Meet-Arabic-Subtitles] Requesting translation (${targetLang}) for:`, text);
