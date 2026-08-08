@@ -1,4 +1,4 @@
-// Content Script for Google Meet Live Subtitle HUD - High-Readability Movie Subtitle Renderer
+// Content Script for Google Meet Live Subtitle HUD - Exclude "Your Presentation / العرض الخاص بك" Labels
 
 (function () {
   console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
@@ -201,7 +201,7 @@
     }
   }
 
-  // Filter out any system UI phrases
+  // Filter out system UI phrases
   function isSystemNotification(text) {
     if (!text) return true;
     const lower = text.toLowerCase();
@@ -347,6 +347,9 @@
 
   function cleanText(str) {
     return str
+      .replace(/^Your Presentation[:\s]*/gi, '')
+      .replace(/^العرض التقديمي الخاص بك[:\s]*/gi, '')
+      .replace(/^العرض الخاص بك[:\s]*/gi, '')
       .replace(/arrow_downward/gi, '')
       .replace(/jump to bottom/gi, '')
       .replace(/перейти вниз/gi, '')
@@ -363,9 +366,15 @@
     const speakerText = document.getElementById("speaker-name-text");
 
     if (origElem) origElem.textContent = text;
-    if (speaker && speaker.trim()) {
+
+    // Filter out "Your Presentation" / "العرض الخاص بك" speaker tags
+    const isPresentationTag = !speaker || /presentation|العرض/i.test(speaker);
+
+    if (speaker && speaker.trim() && !isPresentationTag) {
       speakerTag.style.display = "inline-flex";
       speakerText.textContent = speaker === "You" ? "أنت" : speaker;
+    } else {
+      speakerTag.style.display = "none";
     }
   }
 
@@ -429,6 +438,9 @@
       .replace(/ closed_caption/gi, '')
       .replace(/closed_caption/gi, '')
       .replace(/^أنت\s+/g, '')
+      .replace(/^العرض الخاص بك[:\s]*/g, '')
+      .replace(/^العرض التقديمي الخاص بك[:\s]*/g, '')
+      .replace(/^Your Presentation[:\s]*/g, '')
       .trim();
 
     // Format sentences & long phrases into readable subtitle lines (max ~55 chars per line)
@@ -437,7 +449,6 @@
 
     sentences.forEach(sent => {
       if (sent.length > 55) {
-        // Break long sentence into 2 natural halves near mid space
         const words = sent.split(' ');
         const mid = Math.floor(words.length / 2);
         const line1 = words.slice(0, mid).join(' ');
@@ -459,7 +470,8 @@
     const drawerList = document.getElementById("drawer-items-list");
     if (!drawerList) return;
 
-    const displaySpeaker = speaker === "You" ? "أنت" : (speaker || "متحدث");
+    const isPresentationTag = !speaker || /presentation|العرض/i.test(speaker);
+    const displaySpeaker = isPresentationTag ? "متحدث" : (speaker === "You" ? "أنت" : speaker);
     const timeStr = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
     
     const itemElem = document.createElement("div");
