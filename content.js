@@ -1,4 +1,4 @@
-// Content Script for Google Meet Live Subtitle HUD - Precision Speaker Caption Extractor
+// Content Script for Google Meet Live Subtitle HUD - Leaf-Node Master Extractor
 
 (function () {
   console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
@@ -8,7 +8,7 @@
   let isEnabled = true;
   let currentFontSize = 22;
   let showOriginalText = true;
-  let targetLang = "ar"; // Default: Arabic
+  let targetLang = "ar";
 
   const langBadgeNames = {
     ar: "العربية 🇸🇦",
@@ -27,7 +27,7 @@
   let lastSpeaker = "";
   let lastTranslatedText = "";
   let debounceTimer = null;
-  const DEBOUNCE_MS = 550;
+  const DEBOUNCE_MS = 500;
 
   function init() {
     createSubtitleHUD();
@@ -201,7 +201,7 @@
     }
   }
 
-  // Strict Filter to exclude Google Meet system buttons, tooltips & banners
+  // Strict Filter to exclude Google Meet system banners, PiP messages & UI buttons
   function isSystemNotification(text) {
     if (!text) return true;
     const lower = text.toLowerCase();
@@ -225,7 +225,9 @@
       "bring the call back here",
       "change automatic",
       "closed_caption",
-      "closed caption"
+      "closed caption",
+      "строка субтитров",
+      "المحادثة"
     ];
     return systemPhrases.some(phrase => lower.includes(phrase));
   }
@@ -248,12 +250,12 @@
     }, 350);
   }
 
-  // Precision Speaker Caption Extractor
+  // Leaf-Node Master Extractor Strategy (Immune to PiP and Screen Sharing Banners)
   function extractCaptionsFromDOM() {
     let rawText = "";
     let speakerName = "";
 
-    // --- Strategy 1: Specific Google Meet Captions attributes & classes ---
+    // --- Strategy A: Standard Google Meet selectors ---
     const knownBlocks = document.querySelectorAll(
       'div[jsname="ds319b"], div[jscontroller="k9t41b"], div[data-captions-container] > div, div[jsname="V21rUb"]'
     );
@@ -283,48 +285,65 @@
       }
     }
 
-    // --- Strategy 2: Targeted Bottom Overlay Speaker Captions (handles Russian & Multilingual captions) ---
+    // --- Strategy B: Leaf-Node Bottom Region Scanner (Master Strategy for PiP & Screen Share) ---
     if (!rawText.trim()) {
-      const allDivs = document.querySelectorAll('div');
-      for (let i = allDivs.length - 1; i >= 0; i--) {
-        const div = allDivs[i];
-        if (div.id && div.id.includes("gmeet-ar")) continue;
-        
-        const txt = (div.innerText || "").trim();
-        if (txt.length >= 10 && txt.length < 600 && !isSystemNotification(txt)) {
-          const rect = div.getBoundingClientRect();
-          // Positioned in bottom half of screen
-          if (rect.bottom > window.innerHeight * 0.35 && rect.height > 20 && rect.height < 450) {
-            // Must not contain buttons or navigation
-            if (!div.querySelector('button, input, nav, svg[data-icon]')) {
-              const lines = txt.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !isSystemNotification(l));
-              if (lines.length >= 2) {
-                // Line 0 is Speaker Name e.g., "Your Presentation" or "Mounir"
-                if (lines[0].length < 35) {
-                  speakerName = lines[0];
-                  rawText = lines.slice(1).join(' ');
-                } else {
-                  rawText = lines.join(' ');
-                }
-                break;
-              } else if (lines.length === 1 && lines[0].length > 8) {
-                rawText = lines[0];
-                break;
-              }
-            }
+      const candidates = [];
+      const elements = document.querySelectorAll('div, span, p');
+
+      for (let i = elements.length - 1; i >= 0; i--) {
+        const el = elements[i];
+
+        if (el.closest('#gmeet-ar-subtitle-hud, #gmeet-ar-transcript-drawer')) continue;
+        if (el.children.length > 2) continue; // Target leaf/small text nodes
+
+        const txt = (el.innerText || el.textContent || "").trim();
+        if (!txt || txt.length < 2 || txt.length > 350) continue;
+        if (isSystemNotification(txt)) continue;
+
+        const rect = el.getBoundingClientRect();
+        if (rect.height === 0 || rect.width === 0) continue;
+
+        // Positioned in lower 65% of viewport
+        if (rect.top > window.innerHeight * 0.35) {
+          if (!el.closest('button, input, select, nav, [role="button"]')) {
+            candidates.push({ el, txt, rect });
+          }
+        }
+      }
+
+      if (candidates.length > 0) {
+        // Sort by lowest vertical position on screen
+        candidates.sort((a, b) => b.rect.bottom - a.rect.bottom);
+
+        const lowestBottom = candidates[0].rect.bottom;
+        const validNodes = [];
+
+        for (const c of candidates) {
+          if (Math.abs(c.rect.bottom - lowestBottom) < 180 && !validNodes.includes(c.txt)) {
+            validNodes.push(c.txt);
+          }
+        }
+
+        if (validNodes.length > 0) {
+          validNodes.reverse();
+          if (validNodes.length >= 2 && validNodes[0].length < 35) {
+            speakerName = validNodes[0];
+            rawText = validNodes.slice(1).join(" ");
+          } else {
+            rawText = validNodes.join(" ");
           }
         }
       }
     }
 
-    // Clean speaker name from rawText if prepended
+    // Clean text
     if (speakerName && rawText.startsWith(speakerName)) {
       rawText = rawText.substring(speakerName.length).trim();
     }
 
     rawText = cleanText(rawText);
 
-    if (!rawText || rawText.length < 3 || isSystemNotification(rawText)) return;
+    if (!rawText || rawText.length < 2 || isSystemNotification(rawText)) return;
 
     if (rawText !== currentUtteranceText || speakerName !== lastSpeaker) {
       currentUtteranceText = rawText;
@@ -365,7 +384,7 @@
     if (debounceTimer) clearTimeout(debounceTimer);
 
     const endsWithPunctuation = /[.?!;:\n]$/.test(text);
-    const delay = endsWithPunctuation ? 180 : DEBOUNCE_MS;
+    const delay = endsWithPunctuation ? 150 : DEBOUNCE_MS;
 
     const statusDot = document.getElementById("hud-status-dot");
     if (statusDot) statusDot.classList.add("translating");
