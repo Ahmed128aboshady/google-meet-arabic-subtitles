@@ -1,4 +1,4 @@
-// Content Script for Google Meet Live Subtitle HUD - Exclude "Your Presentation / العرض الخاص بك" Labels
+// Content Script for Google Meet Live Subtitle HUD - Smart Auto-Scroll, Pause-on-Hover & Fast Comprehension
 
 (function () {
   console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
@@ -9,6 +9,10 @@
   let currentFontSize = 24;
   let showOriginalText = true;
   let targetLang = "ar";
+
+  // Pause-on-hover & queue state
+  let isPaused = false;
+  let pendingTranslation = null;
 
   const langBadgeNames = {
     ar: "العربية 🇸🇦",
@@ -27,7 +31,7 @@
   let lastSpeaker = "";
   let lastTranslatedText = "";
   let debounceTimer = null;
-  const DEBOUNCE_MS = 500;
+  const DEBOUNCE_MS = 450;
 
   function init() {
     createSubtitleHUD();
@@ -48,6 +52,7 @@
           <span class="status-indicator" id="hud-status-dot"></span>
           <span id="hud-title-text">الترجمة الفورية</span>
           <span class="hud-badge" id="hud-lang-badge">العربية 🇸🇦</span>
+          <span class="pause-badge" id="pause-badge">⏸️ متوقف للقراءة</span>
         </div>
         <div class="hud-actions">
           <button class="hud-btn" id="hud-btn-history" title="سجل المحادثة">📋</button>
@@ -70,9 +75,34 @@
 
     makeElementDraggable(hudContainer, document.getElementById("hud-drag-handle"));
     setupHUDButtons();
+    setupPauseOnHover();
   }
 
-  // 2. Create Transcript Drawer Sidebar
+  // Pause-on-Hover Logic: Pause streaming text when user hovers mouse over HUD
+  function setupPauseOnHover() {
+    const pauseBadge = document.getElementById("pause-badge");
+
+    hudContainer.addEventListener("mouseenter", () => {
+      isPaused = true;
+      hudContainer.classList.add("paused");
+      if (pauseBadge) pauseBadge.style.display = "inline-block";
+    });
+
+    hudContainer.addEventListener("mouseleave", () => {
+      isPaused = false;
+      hudContainer.classList.remove("paused");
+      if (pauseBadge) pauseBadge.style.display = "none";
+
+      // Render queued pending translation if arrived during hover pause
+      if (pendingTranslation) {
+        renderArabicTranslation(pendingTranslation.arabicText);
+        addTranscriptItem(pendingTranslation.origText, pendingTranslation.arabicText, pendingTranslation.speaker);
+        pendingTranslation = null;
+      }
+    });
+  }
+
+  // 2. Create Transcript Drawer Sidebar with Auto-Scroll
   function createTranscriptDrawer() {
     if (document.getElementById("gmeet-ar-transcript-drawer")) return;
 
@@ -110,6 +140,7 @@
 
     document.getElementById("hud-btn-history").addEventListener("click", () => {
       transcriptDrawer.classList.toggle("open");
+      autoScrollDrawer();
     });
 
     document.getElementById("hud-btn-font-up").addEventListener("click", () => {
@@ -367,7 +398,6 @@
 
     if (origElem) origElem.textContent = text;
 
-    // Filter out "Your Presentation" / "العرض الخاص بك" speaker tags
     const isPresentationTag = !speaker || /presentation|العرض/i.test(speaker);
 
     if (speaker && speaker.trim() && !isPresentationTag) {
@@ -419,14 +449,27 @@
           if (response && response.success) {
             console.log("[Meet-Arabic-Subtitles] Translation received:", response.arabicText);
             lastTranslatedText = text;
-            renderArabicTranslation(response.arabicText);
-            addTranscriptItem(text, response.arabicText, speaker);
+
+            if (isPaused) {
+              // Queue translation if user is hovering to read
+              pendingTranslation = { origText: text, arabicText: response.arabicText, speaker: speaker };
+            } else {
+              renderArabicTranslation(response.arabicText);
+              addTranscriptItem(text, response.arabicText, speaker);
+            }
           }
         }
       );
     } catch (err) {
       console.warn("[Meet-Arabic-Subtitles] Communication exception:", err);
     }
+  }
+
+  // High-Accuracy Numbers & Metrics Highlighting
+  function highlightNumbers(text) {
+    if (!text) return "";
+    // Highlight numbers, currencies ($ € £), percentages % for 0.1s scanning
+    return text.replace(/(\$?\b\d+([.,]\d+)?%?|\b[\u0660-\u0669]+\b)/g, '<span class="highlight-num">$1</span>');
   }
 
   // Cinema-Grade High-Readability Subtitle Line Formatting
@@ -443,26 +486,34 @@
       .replace(/^Your Presentation[:\s]*/g, '')
       .trim();
 
-    // Format sentences & long phrases into readable subtitle lines (max ~55 chars per line)
+    // Format sentences into short readable subtitle lines (max ~50 chars per line)
     const sentences = cleanedAr.split(/(?<=[.؟!])\s+/);
     let finalLines = [];
 
     sentences.forEach(sent => {
-      if (sent.length > 55) {
+      if (sent.length > 50) {
         const words = sent.split(' ');
         const mid = Math.floor(words.length / 2);
         const line1 = words.slice(0, mid).join(' ');
         const line2 = words.slice(mid).join(' ');
-        finalLines.push(line1, line2);
+        finalLines.push(highlightNumbers(line1), highlightNumbers(line2));
       } else {
-        finalLines.push(sent);
+        finalLines.push(highlightNumbers(sent));
       }
     });
 
     if (finalLines.length > 1) {
       arElem.innerHTML = finalLines.map(line => `<div class="ar-line">${line.trim()}</div>`).join('');
     } else {
-      arElem.innerHTML = `<div class="ar-line">${cleanedAr}</div>`;
+      arElem.innerHTML = `<div class="ar-line">${highlightNumbers(cleanedAr)}</div>`;
+    }
+  }
+
+  // Auto-Scroll Transcript History Drawer
+  function autoScrollDrawer() {
+    const drawerList = document.getElementById("drawer-items-list");
+    if (drawerList) {
+      drawerList.scrollTo({ top: drawerList.scrollHeight, behavior: 'smooth' });
     }
   }
 
@@ -482,11 +533,11 @@
         <span>⏱️ ${timeStr}</span>
       </div>
       <div class="transcript-orig">${origText}</div>
-      <div class="transcript-ar">${arText}</div>
+      <div class="transcript-ar">${highlightNumbers(arText)}</div>
     `;
 
     drawerList.appendChild(itemElem);
-    drawerList.scrollTop = drawerList.scrollHeight;
+    autoScrollDrawer();
 
     try {
       chrome.runtime.sendMessage({
