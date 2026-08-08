@@ -1,4 +1,4 @@
-// Content Script for Google Meet Live Subtitle HUD - Smart Auto-Scroll, Pause-on-Hover & Fast Comprehension
+// Content Script for Google Meet Live Subtitle HUD - Timeout Guard & Sentence Cleaner
 
 (function () {
   console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
@@ -78,7 +78,7 @@
     setupPauseOnHover();
   }
 
-  // Pause-on-Hover Logic: Pause streaming text when user hovers mouse over HUD
+  // Pause-on-Hover Logic
   function setupPauseOnHover() {
     const pauseBadge = document.getElementById("pause-badge");
 
@@ -93,7 +93,6 @@
       hudContainer.classList.remove("paused");
       if (pauseBadge) pauseBadge.style.display = "none";
 
-      // Render queued pending translation if arrived during hover pause
       if (pendingTranslation) {
         renderArabicTranslation(pendingTranslation.arabicText);
         addTranscriptItem(pendingTranslation.origText, pendingTranslation.arabicText, pendingTranslation.speaker);
@@ -307,7 +306,6 @@
     let rawText = "";
     let speakerName = "";
 
-    // Target ONLY Google Meet's official live caption containers
     const captionBlocks = document.querySelectorAll(
       'div[jsname="ds319b"], div[jscontroller="k9t41b"], div[data-captions-container] > div, div[jsname="V21rUb"]'
     );
@@ -346,7 +344,6 @@
       }
     }
 
-    // Fallback: Check dedicated ARIA captions region ONLY
     if (!rawText.trim()) {
       const ariaCaptions = document.querySelectorAll('[aria-label*="caption" i], [aria-label*="subtitles" i], [aria-label*="تفريغ" i]');
       for (let i = ariaCaptions.length - 1; i >= 0; i--) {
@@ -381,6 +378,7 @@
       .replace(/^Your Presentation[:\s]*/gi, '')
       .replace(/^العرض التقديمي الخاص بك[:\s]*/gi, '')
       .replace(/^العرض الخاص بك[:\s]*/gi, '')
+      .replace(/\boff_\b/gi, '')
       .replace(/arrow_downward/gi, '')
       .replace(/jump to bottom/gi, '')
       .replace(/перейти вниз/gi, '')
@@ -417,12 +415,17 @@
     const statusDot = document.getElementById("hud-status-dot");
     if (statusDot) statusDot.classList.add("translating");
 
+    // Safety timeout: remove translating class after 3s max
+    setTimeout(() => {
+      if (statusDot) statusDot.classList.remove("translating");
+    }, 3000);
+
     debounceTimer = setTimeout(() => {
       executeTranslation(text, speaker);
     }, delay);
   }
 
-  // Send translation request with target language safely to background worker
+  // Send translation request safely
   function executeTranslation(text, speaker) {
     if (!text || text.trim().length === 0 || isSystemNotification(text)) return;
     if (text === lastTranslatedText) return;
@@ -446,12 +449,11 @@
             return;
           }
 
-          if (response && response.success) {
+          if (response && response.success && response.arabicText) {
             console.log("[Meet-Arabic-Subtitles] Translation received:", response.arabicText);
             lastTranslatedText = text;
 
             if (isPaused) {
-              // Queue translation if user is hovering to read
               pendingTranslation = { origText: text, arabicText: response.arabicText, speaker: speaker };
             } else {
               renderArabicTranslation(response.arabicText);
@@ -468,11 +470,10 @@
   // High-Accuracy Numbers & Metrics Highlighting
   function highlightNumbers(text) {
     if (!text) return "";
-    // Highlight numbers, currencies ($ € £), percentages % for 0.1s scanning
     return text.replace(/(\$?\b\d+([.,]\d+)?%?|\b[\u0660-\u0669]+\b)/g, '<span class="highlight-num">$1</span>');
   }
 
-  // Cinema-Grade High-Readability Subtitle Line Formatting
+  // Subtitle Line Formatting
   function renderArabicTranslation(arabicText) {
     const arElem = document.getElementById("hud-arabic-text");
     if (!arElem || !arabicText) return;
@@ -480,13 +481,15 @@
     let cleanedAr = arabicText
       .replace(/ closed_caption/gi, '')
       .replace(/closed_caption/gi, '')
+      .replace(/\boff_\b/gi, '')
       .replace(/^أنت\s+/g, '')
       .replace(/^العرض الخاص بك[:\s]*/g, '')
       .replace(/^العرض التقديمي الخاص بك[:\s]*/g, '')
       .replace(/^Your Presentation[:\s]*/g, '')
       .trim();
 
-    // Format sentences into short readable subtitle lines (max ~50 chars per line)
+    if (!cleanedAr || cleanedAr === "off_") return;
+
     const sentences = cleanedAr.split(/(?<=[.؟!])\s+/);
     let finalLines = [];
 
@@ -509,7 +512,6 @@
     }
   }
 
-  // Auto-Scroll Transcript History Drawer
   function autoScrollDrawer() {
     const drawerList = document.getElementById("drawer-items-list");
     if (drawerList) {
@@ -575,7 +577,6 @@
     });
   }
 
-  // Listen for setting changes from popup safely
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "toggleEnabled") {
       isEnabled = msg.enabled;

@@ -1,7 +1,7 @@
-// Service Worker with Cinema-Grade Contextual Translation & Multi-Engine Accuracy
+// Service Worker with Multi-Engine Translation & Error Guard
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("إضافة ترجمة اجتماعات جوجل مثبتة بنجاح مع محركات ترجمة متعددة عالية الدقة!");
+  console.log("إضافة ترجمة اجتماعات جوجل مثبتة بنجاح!");
   chrome.storage.sync.get(["engine", "targetLang", "fontSize", "showOriginal"], (data) => {
     if (!data.engine) chrome.storage.sync.set({ engine: "fast" });
     if (!data.targetLang) chrome.storage.sync.set({ targetLang: "ar" });
@@ -52,7 +52,6 @@ async function handleTranslation(text, speaker, requestedLang) {
     }
   }
 
-  // Multi-engine fallback translation (Google, Lingva, MyMemory, Libre)
   return await fallbackMultiEngineTranslation(text, targetLang);
 }
 
@@ -68,12 +67,12 @@ const langNames = {
   zh: "Chinese"
 };
 
-// Gemini AI Contextual Translation with Cinema-Grade Prompting
+// Gemini AI Contextual Translation
 async function translateWithGemini(text, apiKey, targetLang) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
   const targetLangName = langNames[targetLang] || "اللغة العربية الفصيحة البسيطة";
   
-  const systemInstruction = `أنت مترجم سينمائي ومؤتمرات احترافي فائق الدقة. ترجم الكلام المباشر المعطى (من أي لغة إلى ${targetLangName}) بأسلوب طبيعي ومفهوم جداً للمستمع فوراً. تجنب الترجمة الحرفية تماماً، وصغ الجمل بأسلوب متناسق كالمحترفين. لا تكرر اسم المتحدث، واكتب نص الترجمة فقط بدون مقدمات.`;
+  const systemInstruction = `أنت مترجم احترافي. ترجم النص المعطى فورياً إلى ${targetLangName} بأسلوب طبيعي ومفهوم بدون ترجمة حرفية. اكتب الترجمة فقط بدون مقدمات.`;
 
   const bodyData = {
     contents: [
@@ -109,7 +108,7 @@ async function translateWithGemini(text, apiKey, targetLang) {
   throw new Error("لم يتم إرجاع نتيجة من Gemini API");
 }
 
-// 4 Multi-Engine Fallback Translator with High Accuracy Smoothing
+// 4 Multi-Engine Fallback Translator
 async function fallbackMultiEngineTranslation(text, targetLang = "ar") {
   let resultText = "";
 
@@ -169,6 +168,8 @@ function cleanTranslationOutput(str) {
   return str
     .replace(/^["'«]/, '')
     .replace(/["'»]$/, '')
+    .replace(/\boff_\b/gi, '')
+    .replace(/\smic_off\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
