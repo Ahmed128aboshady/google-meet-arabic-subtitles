@@ -1,4 +1,4 @@
-// Content Script for Google Meet Live Subtitle HUD - Leaf-Node Master Extractor
+// Content Script for Google Meet Live Subtitle HUD - Lobby & System Text Exclude Filter
 
 (function () {
   console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
@@ -201,11 +201,25 @@
     }
   }
 
-  // Strict Filter to exclude Google Meet system banners, PiP messages & UI buttons
+  // Strict Filter to exclude Google Meet lobby setup buttons, mic/cam options & system banners
   function isSystemNotification(text) {
     if (!text) return true;
     const lower = text.toLowerCase();
     const systemPhrases = [
+      "present_to_all",
+      "meeting_room",
+      "use companion mode",
+      "phone_forwarded",
+      "join and use a phone",
+      "turn off microphone",
+      "turn off camera",
+      "show more info",
+      "show fewer options",
+      "permission needed",
+      "speakers (",
+      "microphone (",
+      "visual_effects",
+      "expand_less",
       "jump to bottom",
       "arrow_downward",
       "перейти вниз",
@@ -250,7 +264,7 @@
     }, 350);
   }
 
-  // Leaf-Node Master Extractor Strategy (Immune to PiP and Screen Sharing Banners)
+  // Leaf-Node Master Extractor Strategy
   function extractCaptionsFromDOM() {
     let rawText = "";
     let speakerName = "";
@@ -285,7 +299,7 @@
       }
     }
 
-    // --- Strategy B: Leaf-Node Bottom Region Scanner (Master Strategy for PiP & Screen Share) ---
+    // --- Strategy B: Leaf-Node Bottom Region Scanner ---
     if (!rawText.trim()) {
       const candidates = [];
       const elements = document.querySelectorAll('div, span, p');
@@ -294,7 +308,7 @@
         const el = elements[i];
 
         if (el.closest('#gmeet-ar-subtitle-hud, #gmeet-ar-transcript-drawer')) continue;
-        if (el.children.length > 2) continue; // Target leaf/small text nodes
+        if (el.children.length > 2) continue;
 
         const txt = (el.innerText || el.textContent || "").trim();
         if (!txt || txt.length < 2 || txt.length > 350) continue;
@@ -303,7 +317,6 @@
         const rect = el.getBoundingClientRect();
         if (rect.height === 0 || rect.width === 0) continue;
 
-        // Positioned in lower 65% of viewport
         if (rect.top > window.innerHeight * 0.35) {
           if (!el.closest('button, input, select, nav, [role="button"]')) {
             candidates.push({ el, txt, rect });
@@ -312,7 +325,6 @@
       }
 
       if (candidates.length > 0) {
-        // Sort by lowest vertical position on screen
         candidates.sort((a, b) => b.rect.bottom - a.rect.bottom);
 
         const lowestBottom = candidates[0].rect.bottom;
@@ -394,7 +406,7 @@
     }, delay);
   }
 
-  // Send translation request with target language safely to background worker
+  // Send translation request safely
   function executeTranslation(text, speaker) {
     if (!text || text.trim().length === 0 || isSystemNotification(text)) return;
     if (text === lastTranslatedText) return;
