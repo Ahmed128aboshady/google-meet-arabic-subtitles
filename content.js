@@ -1,4 +1,4 @@
-// Content Script for Google Meet Live Subtitle HUD - Strict Official Captions Container Extractor
+// Content Script for Google Meet Live Subtitle HUD - High-Readability Movie Subtitle Renderer
 
 (function () {
   console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
@@ -6,7 +6,7 @@
   let hudContainer = null;
   let transcriptDrawer = null;
   let isEnabled = true;
-  let currentFontSize = 22;
+  let currentFontSize = 24;
   let showOriginalText = true;
   let targetLang = "ar";
 
@@ -113,14 +113,14 @@
     });
 
     document.getElementById("hud-btn-font-up").addEventListener("click", () => {
-      if (currentFontSize < 36) {
+      if (currentFontSize < 38) {
         currentFontSize += 2;
         updateFontSize();
       }
     });
 
     document.getElementById("hud-btn-font-down").addEventListener("click", () => {
-      if (currentFontSize > 14) {
+      if (currentFontSize > 16) {
         currentFontSize -= 2;
         updateFontSize();
       }
@@ -271,7 +271,7 @@
     }, 350);
   }
 
-  // Strict Official Captions Container Extractor (Eliminates All UI Tooltip Interference)
+  // Strict Official Captions Container Extractor
   function extractCaptionsFromDOM() {
     let rawText = "";
     let speakerName = "";
@@ -315,7 +315,7 @@
       }
     }
 
-    // Fallback: Check dedicated ARIA captions region ONLY (never query general div/span/p)
+    // Fallback: Check dedicated ARIA captions region ONLY
     if (!rawText.trim()) {
       const ariaCaptions = document.querySelectorAll('[aria-label*="caption" i], [aria-label*="subtitles" i], [aria-label*="تفريغ" i]');
       for (let i = ariaCaptions.length - 1; i >= 0; i--) {
@@ -420,6 +420,7 @@
     }
   }
 
+  // Cinema-Grade High-Readability Subtitle Line Formatting
   function renderArabicTranslation(arabicText) {
     const arElem = document.getElementById("hud-arabic-text");
     if (!arElem || !arabicText) return;
@@ -430,11 +431,27 @@
       .replace(/^أنت\s+/g, '')
       .trim();
 
+    // Format sentences & long phrases into readable subtitle lines (max ~55 chars per line)
     const sentences = cleanedAr.split(/(?<=[.؟!])\s+/);
-    if (sentences.length > 1) {
-      arElem.innerHTML = sentences.map(s => `<div class="ar-line">${s.trim()}</div>`).join('');
+    let finalLines = [];
+
+    sentences.forEach(sent => {
+      if (sent.length > 55) {
+        // Break long sentence into 2 natural halves near mid space
+        const words = sent.split(' ');
+        const mid = Math.floor(words.length / 2);
+        const line1 = words.slice(0, mid).join(' ');
+        const line2 = words.slice(mid).join(' ');
+        finalLines.push(line1, line2);
+      } else {
+        finalLines.push(sent);
+      }
+    });
+
+    if (finalLines.length > 1) {
+      arElem.innerHTML = finalLines.map(line => `<div class="ar-line">${line.trim()}</div>`).join('');
     } else {
-      arElem.textContent = cleanedAr;
+      arElem.innerHTML = `<div class="ar-line">${cleanedAr}</div>`;
     }
   }
 

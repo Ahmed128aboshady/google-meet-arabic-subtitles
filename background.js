@@ -1,11 +1,11 @@
-// Service Worker with 4 Backup Free Translation Engines (No API Key Required) + Gemini AI Option
+// Service Worker with Cinema-Grade Contextual Translation & Multi-Engine Accuracy
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("إضافة ترجمة اجتماعات جوجل مثبتة بنجاح مع محركات ترجمة متعددة!");
+  console.log("إضافة ترجمة اجتماعات جوجل مثبتة بنجاح مع محركات ترجمة متعددة عالية الدقة!");
   chrome.storage.sync.get(["engine", "targetLang", "fontSize", "showOriginal"], (data) => {
     if (!data.engine) chrome.storage.sync.set({ engine: "fast" });
     if (!data.targetLang) chrome.storage.sync.set({ targetLang: "ar" });
-    if (!data.fontSize) chrome.storage.sync.set({ fontSize: 22 });
+    if (!data.fontSize) chrome.storage.sync.set({ fontSize: 24 });
     if (data.showOriginal === undefined) chrome.storage.sync.set({ showOriginal: true });
   });
 });
@@ -57,7 +57,7 @@ async function handleTranslation(text, speaker, requestedLang) {
 }
 
 const langNames = {
-  ar: "العربية",
+  ar: "اللغة العربية الفصيحة البسيطة",
   en: "English",
   fr: "French",
   de: "German",
@@ -68,12 +68,12 @@ const langNames = {
   zh: "Chinese"
 };
 
-// Gemini AI Contextual Translation
+// Gemini AI Contextual Translation with Cinema-Grade Prompting
 async function translateWithGemini(text, apiKey, targetLang) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
-  const targetLangName = langNames[targetLang] || "العربية";
+  const targetLangName = langNames[targetLang] || "اللغة العربية الفصيحة البسيطة";
   
-  const systemInstruction = `أنت مترجم احترافي لاجتماعات ومحادثات متعددة اللغات. ترجم النص المعطى (من أي لغة إلى لغة ${targetLangName}) بأسلوب سلس وطبيعي ومفهوم جداً بدون ترجمة حرفية. اكتب الترجمة فقط بدون مقدمات أو علامات اقتباس.`;
+  const systemInstruction = `أنت مترجم سينمائي ومؤتمرات احترافي فائق الدقة. ترجم الكلام المباشر المعطى (من أي لغة إلى ${targetLangName}) بأسلوب طبيعي ومفهوم جداً للمستمع فوراً. تجنب الترجمة الحرفية تماماً، وصغ الجمل بأسلوب متناسق كالمحترفين. لا تكرر اسم المتحدث، واكتب نص الترجمة فقط بدون مقدمات.`;
 
   const bodyData = {
     contents: [
@@ -83,7 +83,7 @@ async function translateWithGemini(text, apiKey, targetLang) {
       }
     ],
     generationConfig: {
-      temperature: 0.2,
+      temperature: 0.15,
       maxOutputTokens: 256
     }
   };
@@ -103,14 +103,16 @@ async function translateWithGemini(text, apiKey, targetLang) {
   const rawTranslation = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
   if (rawTranslation) {
-    return rawTranslation.trim().replace(/^["']|["']$/g, '');
+    return cleanTranslationOutput(rawTranslation.trim());
   }
 
   throw new Error("لم يتم إرجاع نتيجة من Gemini API");
 }
 
-// 4 Multi-Engine Fallback Translator (Runs automatically if any API fails)
+// 4 Multi-Engine Fallback Translator with High Accuracy Smoothing
 async function fallbackMultiEngineTranslation(text, targetLang = "ar") {
+  let resultText = "";
+
   // Engine 1: Google Translate GTX Primary
   try {
     const url1 = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
@@ -121,55 +123,52 @@ async function fallbackMultiEngineTranslation(text, targetLang = "ar") {
       if (data1 && data1[0]) {
         data1[0].forEach(item => { if (item[0]) str1 += item[0]; });
       }
-      if (str1.trim()) return str1.trim();
+      if (str1.trim()) resultText = str1.trim();
     }
   } catch (e) {
     console.warn("[Engine 1: Google GTX Failed]:", e);
   }
 
   // Engine 2: Lingva Free Open-Source API
-  try {
-    const url2 = `https://lingva.ml/api/v1/auto/${targetLang}/${encodeURIComponent(text)}`;
-    const res2 = await fetch(url2);
-    if (res2.ok) {
-      const data2 = await res2.json();
-      if (data2 && data2.translation) {
-        return data2.translation.trim();
+  if (!resultText) {
+    try {
+      const url2 = `https://lingva.ml/api/v1/auto/${targetLang}/${encodeURIComponent(text)}`;
+      const res2 = await fetch(url2);
+      if (res2.ok) {
+        const data2 = await res2.json();
+        if (data2 && data2.translation) {
+          resultText = data2.translation.trim();
+        }
       }
+    } catch (e) {
+      console.warn("[Engine 2: Lingva Failed]:", e);
     }
-  } catch (e) {
-    console.warn("[Engine 2: Lingva Failed]:", e);
   }
 
   // Engine 3: MyMemory Translation API
-  try {
-    const url3 = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${targetLang}`;
-    const res3 = await fetch(url3);
-    if (res3.ok) {
-      const data3 = await res3.json();
-      if (data3 && data3.responseData && data3.responseData.translatedText) {
-        return data3.responseData.translatedText.trim();
+  if (!resultText) {
+    try {
+      const url3 = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${targetLang}`;
+      const res3 = await fetch(url3);
+      if (res3.ok) {
+        const data3 = await res3.json();
+        if (data3 && data3.responseData && data3.responseData.translatedText) {
+          resultText = data3.responseData.translatedText.trim();
+        }
       }
+    } catch (e) {
+      console.warn("[Engine 3: MyMemory Failed]:", e);
     }
-  } catch (e) {
-    console.warn("[Engine 3: MyMemory Failed]:", e);
   }
 
-  // Engine 4: LibreTranslate Open Endpoint
-  try {
-    const url4 = `https://libretranslate.de/translate`;
-    const res4 = await fetch(url4, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ q: text, source: "auto", target: targetLang, format: "text" })
-    });
-    if (res4.ok) {
-      const data4 = await res4.json();
-      if (data4 && data4.translatedText) return data4.translatedText.trim();
-    }
-  } catch (e) {
-    console.warn("[Engine 4: LibreTranslate Failed]:", e);
-  }
+  return cleanTranslationOutput(resultText || text);
+}
 
-  return text; // Return text if all fail
+function cleanTranslationOutput(str) {
+  if (!str) return "";
+  return str
+    .replace(/^["'«]/, '')
+    .replace(/["'»]$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

@@ -1,21 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800;900&display=swap');
 
-/* --- Subtitle HUD Overlay for Google Meet --- */
+/* --- Movie-Quality Subtitle HUD Overlay for Google Meet --- */
 #gmeet-ar-subtitle-hud {
   position: fixed;
-  bottom: 90px;
+  bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 999999;
   width: 90%;
-  max-width: 820px;
-  background: rgba(15, 23, 42, 0.92);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(99, 102, 241, 0.25);
-  border-radius: 16px;
-  padding: 14px 20px;
+  max-width: 860px;
+  background: rgba(11, 17, 32, 0.93);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 30px rgba(99, 102, 241, 0.3);
+  border-radius: 18px;
+  padding: 16px 24px;
   direction: rtl;
   font-family: 'Cairo', system-ui, -apple-system, sans-serif;
   color: #f8fafc;
@@ -25,7 +25,7 @@
 }
 
 #gmeet-ar-subtitle-hud.dragging {
-  opacity: 0.9;
+  opacity: 0.88;
   cursor: grabbing;
 }
 
@@ -45,7 +45,7 @@
   justify-content: space-between;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding-bottom: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   cursor: grab;
 }
 
@@ -55,18 +55,19 @@
   gap: 8px;
   font-size: 13px;
   font-weight: 700;
-  color: #818cf8;
+  color: #a5b4fc;
   letter-spacing: 0.3px;
 }
 
 .hud-badge {
   background: linear-gradient(135deg, #6366f1, #a855f7);
-  color: #fff;
+  color: #ffffff;
   font-size: 10px;
-  padding: 2px 8px;
+  padding: 2px 9px;
   border-radius: 20px;
   font-weight: 800;
   text-transform: uppercase;
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.4);
 }
 
 .hud-actions {
@@ -77,37 +78,39 @@
 
 .hud-btn {
   background: rgba(255, 255, 255, 0.08);
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: #cbd5e1;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 13px;
+  font-weight: 700;
   transition: all 0.2s ease;
 }
 
 .hud-btn:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #ffffff;
+  transform: scale(1.05);
 }
 
-/* Speaker Badge */
+/* Speaker Tag Badge */
 .speaker-tag {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(99, 102, 241, 0.25);
-  border: 1px solid rgba(129, 140, 248, 0.4);
-  color: #c7d2fe;
-  font-weight: 700;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25));
+  border: 1px solid rgba(165, 180, 252, 0.35);
+  color: #e0e7ff;
+  font-weight: 800;
   font-size: 13px;
-  padding: 3px 10px;
-  border-radius: 8px;
-  margin-bottom: 8px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  margin-bottom: 10px;
   width: fit-content;
 }
 
@@ -115,8 +118,8 @@
 .hud-content-box {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 220px;
+  gap: 10px;
+  max-height: 240px;
   overflow-y: auto;
 }
 
@@ -130,32 +133,34 @@
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
-  padding: 4px 8px;
+  padding: 6px 12px;
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 6px;
-  border-left: 2px solid #6366f1;
+  border-radius: 8px;
+  border-left: 3px solid #6366f1;
 }
 
+/* High-Readability Movie Subtitle Typography */
 .arabic-translation {
   direction: rtl;
-  text-align: right;
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.6;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.65;
   color: #ffffff;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9), 0 0 15px rgba(0, 0, 0, 0.5);
   white-space: pre-wrap;
   word-break: break-word;
-  animation: fadeInSubtitle 0.3s ease-out;
+  animation: fadeInSubtitle 0.25s ease-out;
+  padding: 4px 0;
 }
 
 .ar-line {
-  margin-bottom: 6px;
-  padding-bottom: 4px;
-}
-
-.ar-line:last-child {
-  margin-bottom: 0;
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px 14px;
+  border-radius: 8px;
+  margin: 4px 0;
+  border-bottom: 2px solid rgba(129, 140, 248, 0.3);
 }
 
 .status-indicator {
@@ -189,13 +194,13 @@
   position: fixed;
   top: 20px;
   right: 20px;
-  width: 380px;
+  width: 390px;
   height: calc(100vh - 120px);
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
-  border-radius: 16px;
+  background: rgba(11, 17, 32, 0.96);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: -10px 0 35px rgba(0, 0, 0, 0.6);
+  border-radius: 18px;
   z-index: 999998;
   display: flex;
   flex-direction: column;
@@ -203,7 +208,7 @@
   font-family: 'Cairo', sans-serif;
   color: #fff;
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  transform: translateX(420px);
+  transform: translateX(430px);
 }
 
 #gmeet-ar-transcript-drawer.open {
@@ -222,7 +227,7 @@
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: #818cf8;
+  color: #a5b4fc;
 }
 
 .drawer-body {
@@ -237,7 +242,7 @@
 .transcript-item {
   background: rgba(255, 255, 255, 0.04);
   border-right: 3px solid #6366f1;
-  padding: 10px 14px;
+  padding: 12px 14px;
   border-radius: 8px 4px 4px 8px;
 }
 
@@ -246,7 +251,7 @@
   justify-content: space-between;
   font-size: 11px;
   color: #94a3b8;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .transcript-orig {
@@ -254,13 +259,14 @@
   text-align: left;
   font-size: 12px;
   color: #cbd5e1;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .transcript-ar {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: #38bdf8;
+  line-height: 1.5;
 }
 
 .drawer-footer {
