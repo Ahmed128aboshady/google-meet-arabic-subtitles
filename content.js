@@ -1,4 +1,4 @@
-// Content Script for Google Meet Live Subtitle HUD with Error Handling
+// Content Script for Google Meet Live Subtitle HUD - Precision Speaker Caption Extractor
 
 (function () {
   console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
@@ -8,7 +8,7 @@
   let isEnabled = true;
   let currentFontSize = 22;
   let showOriginalText = true;
-  let targetLang = "ar";
+  let targetLang = "ar"; // Default: Arabic
 
   const langBadgeNames = {
     ar: "العربية 🇸🇦",
@@ -27,7 +27,7 @@
   let lastSpeaker = "";
   let lastTranslatedText = "";
   let debounceTimer = null;
-  const DEBOUNCE_MS = 650;
+  const DEBOUNCE_MS = 550;
 
   function init() {
     createSubtitleHUD();
@@ -153,10 +153,9 @@
         currentFontSize = res.fontSize;
         updateFontSize();
       }
-      if (res.targetLang) {
-        targetLang = res.targetLang;
-        updateHUDLanguageTitle();
-      }
+      targetLang = res.targetLang || "ar";
+      updateHUDLanguageTitle();
+
       if (res.showOriginal !== undefined) {
         showOriginalText = res.showOriginal;
         document.getElementById("hud-original-text").style.display = showOriginalText ? "block" : "none";
@@ -202,11 +201,14 @@
     }
   }
 
-  // Filter out Google Meet system notifications & UI banners
+  // Strict Filter to exclude Google Meet system buttons, tooltips & banners
   function isSystemNotification(text) {
     if (!text) return true;
     const lower = text.toLowerCase();
     const systemPhrases = [
+      "jump to bottom",
+      "arrow_downward",
+      "перейти вниз",
       "presentation was added",
       "main screen",
       "you are presenting",
@@ -218,6 +220,10 @@
       "avoid an infinity mirror",
       "share just a tab",
       "show my screen anyway",
+      "picture-in-picture",
+      "screen sharing",
+      "bring the call back here",
+      "change automatic",
       "closed_caption",
       "closed caption"
     ];
@@ -239,10 +245,10 @@
 
     setInterval(() => {
       if (isEnabled) extractCaptionsFromDOM();
-    }, 400);
+    }, 350);
   }
 
-  // Multi-Strategy Caption Extractor
+  // Precision Speaker Caption Extractor
   function extractCaptionsFromDOM() {
     let rawText = "";
     let speakerName = "";
@@ -277,24 +283,7 @@
       }
     }
 
-    // --- Strategy 2: ARIA Live Regions & Captions Labels ---
-    if (!rawText.trim()) {
-      const ariaNodes = document.querySelectorAll(
-        '[aria-live="polite"], [aria-live="assertive"], [aria-label*="caption" i], [aria-label*="tasmeyat" i], [aria-label*="تسميات" i]'
-      );
-
-      for (let i = ariaNodes.length - 1; i >= 0; i--) {
-        const node = ariaNodes[i];
-        if (node.id && node.id.includes("gmeet-ar")) continue;
-        const text = node.innerText || node.textContent;
-        if (text && text.trim().length > 1 && !isSystemNotification(text)) {
-          rawText = text.trim();
-          break;
-        }
-      }
-    }
-
-    // --- Strategy 3: Bottom Overlay Captions Panel ---
+    // --- Strategy 2: Targeted Bottom Overlay Speaker Captions (handles Russian & Multilingual captions) ---
     if (!rawText.trim()) {
       const allDivs = document.querySelectorAll('div');
       for (let i = allDivs.length - 1; i >= 0; i--) {
@@ -302,20 +291,23 @@
         if (div.id && div.id.includes("gmeet-ar")) continue;
         
         const txt = (div.innerText || "").trim();
-        if (txt.length >= 2 && txt.length < 500 && !isSystemNotification(txt)) {
+        if (txt.length >= 10 && txt.length < 600 && !isSystemNotification(txt)) {
           const rect = div.getBoundingClientRect();
-          if (rect.bottom > window.innerHeight * 0.35 && rect.height > 15 && rect.height < 350) {
-            if (!div.querySelector('button, input, nav')) {
+          // Positioned in bottom half of screen
+          if (rect.bottom > window.innerHeight * 0.35 && rect.height > 20 && rect.height < 450) {
+            // Must not contain buttons or navigation
+            if (!div.querySelector('button, input, nav, svg[data-icon]')) {
               const lines = txt.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !isSystemNotification(l));
               if (lines.length >= 2) {
-                if (lines[0].length < 30) {
+                // Line 0 is Speaker Name e.g., "Your Presentation" or "Mounir"
+                if (lines[0].length < 35) {
                   speakerName = lines[0];
                   rawText = lines.slice(1).join(' ');
                 } else {
                   rawText = lines.join(' ');
                 }
                 break;
-              } else if (lines.length === 1) {
+              } else if (lines.length === 1 && lines[0].length > 8) {
                 rawText = lines[0];
                 break;
               }
@@ -332,7 +324,7 @@
 
     rawText = cleanText(rawText);
 
-    if (!rawText || rawText.length < 2 || isSystemNotification(rawText)) return;
+    if (!rawText || rawText.length < 3 || isSystemNotification(rawText)) return;
 
     if (rawText !== currentUtteranceText || speakerName !== lastSpeaker) {
       currentUtteranceText = rawText;
@@ -347,6 +339,9 @@
 
   function cleanText(str) {
     return str
+      .replace(/arrow_downward/gi, '')
+      .replace(/jump to bottom/gi, '')
+      .replace(/перейти вниз/gi, '')
       .replace(/closed_caption/gi, '')
       .replace(/closed caption/gi, '')
       .replace(/\[\s*closed_caption\s*\]/gi, '')
@@ -370,7 +365,7 @@
     if (debounceTimer) clearTimeout(debounceTimer);
 
     const endsWithPunctuation = /[.?!;:\n]$/.test(text);
-    const delay = endsWithPunctuation ? 200 : DEBOUNCE_MS;
+    const delay = endsWithPunctuation ? 180 : DEBOUNCE_MS;
 
     const statusDot = document.getElementById("hud-status-dot");
     if (statusDot) statusDot.classList.add("translating");
