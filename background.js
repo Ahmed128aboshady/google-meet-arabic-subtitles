@@ -1,7 +1,7 @@
-// Service Worker for handling AI & Fast Translation requests with Target Language Selection
+// Service Worker with 4 Backup Free Translation Engines (No API Key Required) + Gemini AI Option
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("إضافة ترجمة اجتماعات جوجل مثبتة بنجاح!");
+  console.log("إضافة ترجمة اجتماعات جوجل مثبتة بنجاح مع محركات ترجمة متعددة!");
   chrome.storage.sync.get(["engine", "targetLang", "fontSize", "showOriginal"], (data) => {
     if (!data.engine) chrome.storage.sync.set({ engine: "fast" });
     if (!data.targetLang) chrome.storage.sync.set({ targetLang: "ar" });
@@ -47,13 +47,13 @@ async function handleTranslation(text, speaker, requestedLang) {
     try {
       return await translateWithGemini(text, apiKey, targetLang);
     } catch (err) {
-      console.warn("فشلت ترجمة Gemini، جاري الانتقال للمحرك السريع الاحتياطي:", err);
-      return await fallbackFastTranslation(text, targetLang);
+      console.warn("فشلت ترجمة Gemini، جاري الانتقال لمجموع المحركات المفتوحة السريعة:", err);
+      return await fallbackMultiEngineTranslation(text, targetLang);
     }
   }
 
-  // Otherwise use fast translation
-  return await fallbackFastTranslation(text, targetLang);
+  // Multi-engine fallback translation (Google, Lingva, MyMemory, Libre)
+  return await fallbackMultiEngineTranslation(text, targetLang);
 }
 
 const langNames = {
@@ -68,7 +68,7 @@ const langNames = {
   zh: "Chinese"
 };
 
-// Gemini AI Contextual Translation with Dynamic Target Language
+// Gemini AI Contextual Translation
 async function translateWithGemini(text, apiKey, targetLang) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
   const targetLangName = langNames[targetLang] || "العربية";
@@ -109,39 +109,67 @@ async function translateWithGemini(text, apiKey, targetLang) {
   throw new Error("لم يتم إرجاع نتيجة من Gemini API");
 }
 
-// Fast Free Fallback Translation with Dynamic Target Language
-async function fallbackFastTranslation(text, targetLang = "ar") {
-  // Endpoint 1: Google Translate GTX
+// 4 Multi-Engine Fallback Translator (Runs automatically if any API fails)
+async function fallbackMultiEngineTranslation(text, targetLang = "ar") {
+  // Engine 1: Google Translate GTX Primary
   try {
     const url1 = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
-    const response = await fetch(url1);
-    if (response.ok) {
-      const data = await response.json();
-      let translatedStr = "";
-      if (data && data[0]) {
-        data[0].forEach((item) => {
-          if (item[0]) translatedStr += item[0];
-        });
+    const res1 = await fetch(url1);
+    if (res1.ok) {
+      const data1 = await res1.json();
+      let str1 = "";
+      if (data1 && data1[0]) {
+        data1[0].forEach(item => { if (item[0]) str1 += item[0]; });
       }
-      if (translatedStr.trim()) return translatedStr.trim();
+      if (str1.trim()) return str1.trim();
     }
   } catch (e) {
-    console.warn("Primary fast translation failed, trying backup:", e);
+    console.warn("[Engine 1: Google GTX Failed]:", e);
   }
 
-  // Endpoint 2: MyMemory Translation API fallback
+  // Engine 2: Lingva Free Open-Source API
   try {
-    const url2 = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${targetLang}`;
-    const response2 = await fetch(url2);
-    if (response2.ok) {
-      const data2 = await response2.json();
-      if (data2 && data2.responseData && data2.responseData.translatedText) {
-        return data2.responseData.translatedText;
+    const url2 = `https://lingva.ml/api/v1/auto/${targetLang}/${encodeURIComponent(text)}`;
+    const res2 = await fetch(url2);
+    if (res2.ok) {
+      const data2 = await res2.json();
+      if (data2 && data2.translation) {
+        return data2.translation.trim();
       }
     }
   } catch (e) {
-    console.warn("Secondary fast translation failed:", e);
+    console.warn("[Engine 2: Lingva Failed]:", e);
   }
 
-  return text;
+  // Engine 3: MyMemory Translation API
+  try {
+    const url3 = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${targetLang}`;
+    const res3 = await fetch(url3);
+    if (res3.ok) {
+      const data3 = await res3.json();
+      if (data3 && data3.responseData && data3.responseData.translatedText) {
+        return data3.responseData.translatedText.trim();
+      }
+    }
+  } catch (e) {
+    console.warn("[Engine 3: MyMemory Failed]:", e);
+  }
+
+  // Engine 4: LibreTranslate Open Endpoint
+  try {
+    const url4 = `https://libretranslate.de/translate`;
+    const res4 = await fetch(url4, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ q: text, source: "auto", target: targetLang, format: "text" })
+    });
+    if (res4.ok) {
+      const data4 = await res4.json();
+      if (data4 && data4.translatedText) return data4.translatedText.trim();
+    }
+  } catch (e) {
+    console.warn("[Engine 4: LibreTranslate Failed]:", e);
+  }
+
+  return text; // Return text if all fail
 }
