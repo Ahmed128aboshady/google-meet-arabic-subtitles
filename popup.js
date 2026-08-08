@@ -8,8 +8,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const toast = document.getElementById("save-toast");
   const apiKeyGroup = document.getElementById("api-key-group");
 
-  // Load existing settings
+  // Load existing settings safely
   chrome.storage.sync.get(["enabled", "targetLang", "engine", "apiKey", "fontSize"], (res) => {
+    if (chrome.runtime.lastError) return;
     toggleExt.checked = res.enabled !== false;
     targetLangSelect.value = res.targetLang || "ar";
     engineSelect.value = res.engine || "fast";
@@ -29,16 +30,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Toggle enable/disable instantly
+  // Toggle enable/disable safely
   toggleExt.addEventListener("change", () => {
     const isEnabled = toggleExt.checked;
     chrome.storage.sync.set({ enabled: isEnabled });
 
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0] && tabs[0].url.includes("meet.google.com")) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: "toggleEnabled", enabled: isEnabled });
-      }
-    });
+    safeSendMessageToTab({ action: "toggleEnabled", enabled: isEnabled });
   });
 
   // Save settings button
@@ -57,12 +54,20 @@ document.addEventListener("DOMContentLoaded", () => {
         toast.style.display = "none";
       }, 2000);
 
-      // Notify content script of target language update
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0] && tabs[0].url.includes("meet.google.com")) {
-          chrome.tabs.sendMessage(tabs[0].id, { action: "updateLanguage", targetLang: settings.targetLang });
-        }
-      });
+      safeSendMessageToTab({ action: "updateLanguage", targetLang: settings.targetLang });
     });
   });
+
+  function safeSendMessageToTab(message) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (chrome.runtime.lastError) return;
+      if (tabs[0] && tabs[0].id && tabs[0].url && tabs[0].url.includes("meet.google.com")) {
+        chrome.tabs.sendMessage(tabs[0].id, message, () => {
+          if (chrome.runtime.lastError) {
+            // Silently ignore if content script is not loaded or tab is refreshing
+          }
+        });
+      }
+    });
+  }
 });

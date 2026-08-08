@@ -1,4 +1,4 @@
-// Content Script for Google Meet Live Subtitle HUD with System Notification Filtering
+// Content Script for Google Meet Live Subtitle HUD with Error Handling
 
 (function () {
   console.log("%c[Meet-Arabic-Subtitles] تم تشغيل الإضافة بنجاح على التاب الحالي! 🚀", "color: #818cf8; font-weight: bold; font-size: 14px;");
@@ -148,6 +148,7 @@
 
   function loadSettings() {
     chrome.storage.sync.get(["fontSize", "showOriginal", "enabled", "targetLang"], (res) => {
+      if (chrome.runtime.lastError) return;
       if (res.fontSize) {
         currentFontSize = res.fontSize;
         updateFontSize();
@@ -241,7 +242,7 @@
     }, 400);
   }
 
-  // Multi-Strategy Caption Extractor with System Notification Exclusion
+  // Multi-Strategy Caption Extractor
   function extractCaptionsFromDOM() {
     let rawText = "";
     let speakerName = "";
@@ -276,7 +277,7 @@
       }
     }
 
-    // --- Strategy 2: ARIA Live Regions & Captions Labels (excluding System Notifications) ---
+    // --- Strategy 2: ARIA Live Regions & Captions Labels ---
     if (!rawText.trim()) {
       const ariaNodes = document.querySelectorAll(
         '[aria-live="polite"], [aria-live="assertive"], [aria-label*="caption" i], [aria-label*="tasmeyat" i], [aria-label*="تسميات" i]'
@@ -293,7 +294,7 @@
       }
     }
 
-    // --- Strategy 3: Bottom Overlay Captions Panel (e.g. Russian / Multilingual captions) ---
+    // --- Strategy 3: Bottom Overlay Captions Panel ---
     if (!rawText.trim()) {
       const allDivs = document.querySelectorAll('div');
       for (let i = allDivs.length - 1; i >= 0; i--) {
@@ -307,10 +308,8 @@
             if (!div.querySelector('button, input, nav')) {
               const lines = txt.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !isSystemNotification(l));
               if (lines.length >= 2) {
-                // Check if first line is a speaker name or "Your Presentation"
                 if (lines[0].length < 30) {
                   speakerName = lines[0];
-                  // Take the translated or spoken paragraph lines
                   rawText = lines.slice(1).join(' ');
                 } else {
                   rawText = lines.join(' ');
@@ -367,7 +366,6 @@
     }
   }
 
-  // Schedule sentence translation with debouncing
   function scheduleTranslation(text, speaker) {
     if (debounceTimer) clearTimeout(debounceTimer);
 
@@ -382,32 +380,41 @@
     }, delay);
   }
 
-  // Send translation request with target language to background worker
+  // Send translation request with target language safely to background worker
   function executeTranslation(text, speaker) {
     if (!text || text.trim().length === 0 || isSystemNotification(text)) return;
     if (text === lastTranslatedText) return;
 
     console.log(`[Meet-Arabic-Subtitles] Requesting translation (${targetLang}) for:`, text);
 
-    chrome.runtime.sendMessage(
-      {
-        action: "translateText",
-        text: text,
-        speaker: speaker,
-        targetLang: targetLang
-      },
-      (response) => {
-        const statusDot = document.getElementById("hud-status-dot");
-        if (statusDot) statusDot.classList.remove("translating");
+    try {
+      chrome.runtime.sendMessage(
+        {
+          action: "translateText",
+          text: text,
+          speaker: speaker,
+          targetLang: targetLang
+        },
+        (response) => {
+          const statusDot = document.getElementById("hud-status-dot");
+          if (statusDot) statusDot.classList.remove("translating");
 
-        if (response && response.success) {
-          console.log("[Meet-Arabic-Subtitles] Translation received:", response.arabicText);
-          lastTranslatedText = text;
-          renderArabicTranslation(response.arabicText);
-          addTranscriptItem(text, response.arabicText, speaker);
+          if (chrome.runtime.lastError) {
+            console.warn("[Meet-Arabic-Subtitles] Communication warning:", chrome.runtime.lastError.message);
+            return;
+          }
+
+          if (response && response.success) {
+            console.log("[Meet-Arabic-Subtitles] Translation received:", response.arabicText);
+            lastTranslatedText = text;
+            renderArabicTranslation(response.arabicText);
+            addTranscriptItem(text, response.arabicText, speaker);
+          }
         }
-      }
-    );
+      );
+    } catch (err) {
+      console.warn("[Meet-Arabic-Subtitles] Communication exception:", err);
+    }
   }
 
   function renderArabicTranslation(arabicText) {
@@ -449,10 +456,14 @@
     drawerList.appendChild(itemElem);
     drawerList.scrollTop = drawerList.scrollHeight;
 
-    chrome.runtime.sendMessage({
-      action: "saveTranscriptItem",
-      item: { speaker: displaySpeaker, time: timeStr, orig: origText, ar: arText }
-    });
+    try {
+      chrome.runtime.sendMessage({
+        action: "saveTranscriptItem",
+        item: { speaker: displaySpeaker, time: timeStr, orig: origText, ar: arText }
+      }, () => {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
   }
 
   function exportTranscript() {
@@ -481,16 +492,19 @@
     });
   }
 
-  // Listen for setting changes from popup
-  chrome.runtime.onMessage.addListener((msg) => {
+  // Listen for setting changes from popup safely
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "toggleEnabled") {
       isEnabled = msg.enabled;
       if (hudContainer) hudContainer.style.display = isEnabled ? "block" : "none";
+      sendResponse({ status: "ok" });
     }
     if (msg.action === "updateLanguage") {
       targetLang = msg.targetLang;
       updateHUDLanguageTitle();
+      sendResponse({ status: "ok" });
     }
+    return true;
   });
 
   if (document.readyState === "loading") {
